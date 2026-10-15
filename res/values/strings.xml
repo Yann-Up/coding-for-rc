@@ -36,4 +36,14 @@
     <string name="scan_error">相机启动失败，请重试</string>
     <string name="device_icon">设备</string>
     <string name="open_device">打开设备</string>
+    <string name="cookie_title">Cookie</string>
+    <string name="cookie_query_host">查询 Host：%1$s</string>
+    <string name="cookie_entry_count">条目数：%1$d</string>
+    <string name="cookie_shared_hint">所有设备共享这些 Cookie</string>
+    <string name="cookie_empty">当前链接无可读取 Cookie</string>
+    <string name="cookie_show_values">显示值</string>
+    <string name="cookie_hide_values">隐藏值</string>
+    <string name="cookie_refresh">刷新</string>
+    <string name="cookie_close">关闭</string>
+    <string name="cookie_masked_value">••••••••</string>
 </resources>

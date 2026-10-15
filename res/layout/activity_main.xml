@@ -15,25 +15,23 @@
         android:paddingRight="@dimen/page_horizontal"
         android:paddingBottom="@dimen/header_bottom">
 
-        <LinearLayout
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:text="@string/main_title"
+            android:textAppearance="@style/Text.KimiRC.ScreenTitle" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:maxLines="1"
-                android:text="@string/main_title"
-                android:textAppearance="@style/Text.KimiRC.ScreenTitle" />
 
             <TextView
                 android:id="@+id/device_count"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginLeft="12dp"
                 android:background="@drawable/bg_count_badge"
                 android:fontFamily="sans-serif-medium"
                 android:includeFontPadding="false"
@@ -45,6 +43,26 @@
                 android:textSize="12sp"
                 tools:ignore="HardcodedText"
                 xmlns:tools="http://schemas.android.com/tools" />
+
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/cookie_button"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:fontFamily="sans-serif-medium"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:minWidth="48dp"
+                android:paddingLeft="12dp"
+                android:paddingRight="12dp"
+                android:text="@string/cookie_title"
+                android:textColor="@color/brand"
+                android:textSize="14sp" />
         </LinearLayout>
 
         <TextView

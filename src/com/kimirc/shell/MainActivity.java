@@ -38,6 +38,7 @@ public class MainActivity extends Activity {
     private DeviceAdapter adapter;
     private EditText urlInputField;
     private TextView deviceCountView;
+    private CookieViewer cookieViewer;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -65,6 +66,15 @@ public class MainActivity extends Activity {
     protected void onUserLeaveHint() {
         super.onUserLeaveHint();
         unlocked = false;
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (cookieViewer != null) {
+            cookieViewer.dismiss();
+            cookieViewer = null;
+        }
     }
 
     @Override
@@ -197,6 +207,15 @@ public class MainActivity extends Activity {
             }
         });
 
+        findViewById(R.id.cookie_button).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (cookieViewer != null) {
+                    cookieViewer.dismiss();
+                }
+                cookieViewer = CookieViewer.show(MainActivity.this);
+            }
+        });
         addButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {

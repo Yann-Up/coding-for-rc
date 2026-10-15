@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingLeft="24dp"
+    android:paddingTop="4dp"
+    android:paddingRight="24dp"
+    android:paddingBottom="4dp">
+
+    <TextView
+        android:id="@+id/cookie_host"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:longClickable="false"
+        android:textAppearance="@style/Text.KimiRC.Body"
+        android:textIsSelectable="false" />
+
+    <TextView
+        android:id="@+id/cookie_count"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:fontFamily="sans-serif-medium"
+        android:longClickable="false"
+        android:textAppearance="@style/Text.KimiRC.Caption"
+        android:textIsSelectable="false" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:longClickable="false"
+        android:text="@string/cookie_shared_hint"
+        android:textAppearance="@style/Text.KimiRC.Caption"
+        android:textIsSelectable="false"
+        android:textSize="12sp" />
+
+    <ScrollView
+        android:id="@+id/cookie_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="260dp"
+        android:layout_marginTop="12dp"
+        android:clipToPadding="false"
+        android:fillViewport="true"
+        android:overScrollMode="ifContentScrolls"
+        android:scrollbars="vertical">
+
+        <LinearLayout
+            android:id="@+id/cookie_list"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingBottom="4dp" />
+    </ScrollView>
+
+    <TextView
+        android:id="@+id/cookie_empty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:gravity="center"
+        android:longClickable="false"
+        android:minHeight="88dp"
+        android:text="@string/cookie_empty"
+        android:textAppearance="@style/Text.KimiRC.Body"
+        android:textIsSelectable="false"
+        android:visibility="gone" />
+</LinearLayout>
