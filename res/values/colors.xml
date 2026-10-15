@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand">#5B50D6</color>
+    <color name="brand_soft">#EFEDFC</color>
+    <color name="brand_ripple">#33FFFFFF</color>
+    <color name="app_background">#F6F7FB</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="surface_muted">#F9F9FC</color>
+    <color name="text_primary">#191A22</color>
+    <color name="text_secondary">#6F7380</color>
+    <color name="text_tertiary">#9699A5</color>
+    <color name="outline">#E5E6ED</color>
+    <color name="danger">#D92D20</color>
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="scan_scrim">#A6000000</color>
+    <color name="scan_hint_background">#66000000</color>
+    <color name="scan_surface">#24FFFFFF</color>
+    <color name="scan_surface_pressed">#3DFFFFFF</color>
+    <color name="scan_outline">#52FFFFFF</color>
+</resources>

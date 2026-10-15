@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="page_horizontal">20dp</dimen>
+    <dimen name="page_top">28dp</dimen>
+    <dimen name="header_bottom">20dp</dimen>
+    <dimen name="card_radius">16dp</dimen>
+    <dimen name="button_radius">14dp</dimen>
+    <dimen name="input_radius">12dp</dimen>
+    <dimen name="dialog_radius">26dp</dimen>
+    <dimen name="control_height">56dp</dimen>
+    <dimen name="list_gap">12dp</dimen>
+    <dimen name="text_screen_title">28sp</dimen>
+    <dimen name="text_section_title">20sp</dimen>
+    <dimen name="text_device_name">16sp</dimen>
+    <dimen name="text_body">14sp</dimen>
+    <dimen name="text_caption">13sp</dimen>
+    <dimen name="text_button">16sp</dimen>
+    <dimen name="scan_corner_length">24dp</dimen>
+    <dimen name="scan_corner_stroke">3dp</dimen>
+    <dimen name="scan_corner_inset">1dp</dimen>
+</resources>

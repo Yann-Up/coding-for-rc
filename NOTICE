@@ -1,0 +1,4 @@
+KimiRC includes ZXing Core (https://github.com/zxing/zxing),
+Copyright (c) 2007-2023 ZXing authors, licensed under the Apache License, Version 2.0
+(http://www.apache.org/licenses/LICENSE-2.0), for QR code decoding.
+The bundled jar is libs/zxing-core-3.5.3.jar; its SHA-256 is pinned in build.sh.

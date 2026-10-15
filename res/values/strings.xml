@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">KimiRC</string>
+    <string name="main_title">远程设备</string>
+    <string name="main_subtitle">安全连接你的 Kimi Code 工作环境</string>
+    <string name="device_count">%1$d 台设备</string>
+    <string name="empty_title">还没有远程设备</string>
+    <string name="empty_description">添加设备后，即可随时进入你的远程工作空间</string>
+    <string name="add_device">添加设备</string>
+    <string name="device_name">设备名称</string>
+    <string name="device_name_hint">例如：我的工作台</string>
+    <string name="device_url">远控链接</string>
+    <string name="device_url_hint">https://code-rc.kimi.com/</string>
+    <string name="device_url_help">粘贴链接，或使用“扫一扫”快速添加</string>
+    <string name="save">保存</string>
+    <string name="cancel">取消</string>
+    <string name="delete">删除</string>
+    <string name="delete_title">删除设备</string>
+    <string name="delete_confirm">确定删除「%1$s」吗？删除后需要重新添加链接。</string>
+    <string name="lock_title">验证身份</string>
+    <string name="lock_desc">请验证以继续使用 KimiRC</string>
+    <string name="lock_hint">未检测到系统锁屏，应用锁未生效。请立即设置锁屏密码或指纹，以防手机丢失后远控设备被他人接管。</string>
+    <string name="ok">知道了</string>
+    <string name="name_required">请填写设备名称</string>
+    <string name="url_invalid">链接必须以 https://code-rc.kimi.com/ 开头</string>
+    <string name="ssl_error">连接证书异常，已阻止加载</string>
+    <string name="external_error">无法打开该链接</string>
+    <string name="choose_file">选择文件</string>
+    <string name="scan_add">扫一扫</string>
+    <string name="scan_title">扫码添加设备</string>
+    <string name="scan_hint">将二维码放入框内，即可自动识别</string>
+    <string name="scan_close">关闭扫码</string>
+    <string name="torch_off">打开手电筒</string>
+    <string name="torch_on">关闭手电筒</string>
+    <string name="camera_denied">没有相机权限，无法扫码</string>
+    <string name="scan_error">相机启动失败，请重试</string>
+    <string name="device_icon">设备</string>
+    <string name="open_device">打开设备</string>
+</resources>
