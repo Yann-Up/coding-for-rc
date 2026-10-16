@@ -1,7 +1,6 @@
 package com.kimirc.shell;
 
 import android.Manifest;
-import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -48,7 +47,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-public class ScanActivity extends Activity implements TextureView.SurfaceTextureListener {
+public class ScanActivity extends ThemedActivity implements TextureView.SurfaceTextureListener {
 
     public static final String EXTRA_RESULT = "com.kimirc.shell.extra.SCAN_RESULT";
 
@@ -78,8 +77,8 @@ public class ScanActivity extends Activity implements TextureView.SurfaceTexture
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE
-                | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        // FLAG_SECURE 由 ThemedActivity 按截屏保护开关统一处理。
         setContentView(R.layout.activity_scan);
 
         textureView = (TextureView) findViewById(R.id.scan_preview);

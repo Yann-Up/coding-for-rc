@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand">#9A93F7</color>
+    <!-- 实底（按钮/浮标）用较暗的一档，才能压住白色文字与图标。 -->
+    <color name="brand_fill">#6C63E2</color>
+    <color name="brand_soft">#2A2745</color>
+    <color name="brand_ripple">#33FFFFFF</color>
+    <color name="app_background">#0F0F12</color>
+    <color name="surface">#1A1A1F</color>
+    <color name="surface_muted">#232329</color>
+    <color name="text_primary">#F5F5F7</color>
+    <color name="text_secondary">#A0A0AC</color>
+    <color name="text_tertiary">#6F6F7A</color>
+    <color name="outline">#2E2E36</color>
+    <color name="danger">#F97066</color>
+</resources>

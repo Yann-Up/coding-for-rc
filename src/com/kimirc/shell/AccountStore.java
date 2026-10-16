@@ -7,8 +7,13 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,6 +25,7 @@ public final class AccountStore {
     private static final String KEY_LIST = "list";
     private static final String KEY_ACTIVE = "active";
     private static final String WIPE_FILE_PREFIX = "wipe_slot_";
+    private static final String NICKNAME_FILE_PREFIX = "nickname_";
     private static final Object LOCK = new Object();
 
     public static class Account {
@@ -140,6 +146,34 @@ public final class AccountStore {
         }
     }
 
+    // 登录昵称由网页进程写入、主进程读取，所以走文件：SharedPreferences 按进程缓存，另一方看不到。
+    public static String nickname(Context context, String id) {
+        File file = nicknameFile(context, id);
+        if (!file.exists()) {
+            return "";
+        }
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                new FileInputStream(file), StandardCharsets.UTF_8))) {
+            String value = reader.readLine();
+            return value != null ? value.trim() : "";
+        } catch (IOException e) {
+            return "";
+        }
+    }
+
+    public static boolean setNickname(Context context, String id, String nickname) {
+        String trimmed = nickname.trim();
+        if (trimmed.isEmpty() || trimmed.equals(nickname(context, id))) {
+            return false;
+        }
+        try (FileOutputStream out = new FileOutputStream(nicknameFile(context, id))) {
+            out.write(trimmed.getBytes(StandardCharsets.UTF_8));
+        } catch (IOException ignored) {
+            return false;
+        }
+        return true;
+    }
+
     public static void remove(Context context, String id) {
         synchronized (LOCK) {
             List<Account> accounts = load(context);
@@ -154,6 +188,10 @@ public final class AccountStore {
             }
             save(context, accounts);
             markWipePending(context, removedSlot);
+            File nicknameFile = nicknameFile(context, id);
+            if (nicknameFile.exists()) {
+                nicknameFile.delete();
+            }
             if (id.equals(prefs(context).getString(KEY_ACTIVE, ""))) {
                 if (accounts.isEmpty()) {
                     prefs(context).edit().remove(KEY_ACTIVE).apply();
@@ -185,6 +223,10 @@ public final class AccountStore {
     // 跨进程读取，所以用文件而不是 SharedPreferences：后者按进程缓存，账号进程看不到主进程刚写的值。
     private static File wipeFile(Context context, int slot) {
         return new File(context.getApplicationContext().getFilesDir(), WIPE_FILE_PREFIX + slot);
+    }
+
+    private static File nicknameFile(Context context, String id) {
+        return new File(context.getApplicationContext().getFilesDir(), NICKNAME_FILE_PREFIX + id);
     }
 
     private static int freeSlot(List<Account> accounts) {

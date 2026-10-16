@@ -11,7 +11,6 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.SslErrorHandler;
@@ -28,11 +27,21 @@ import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
 
-public abstract class WebActivity extends Activity {
+import org.json.JSONException;
+import org.json.JSONObject;
+import org.json.JSONTokener;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+
+public abstract class WebActivity extends ThemedActivity {
 
     public static final String EXTRA_NAME = "com.kimirc.shell.extra.NAME";
     public static final String EXTRA_URL = "com.kimirc.shell.extra.URL";
     public static final String EXTRA_ACCOUNT = "com.kimirc.shell.extra.ACCOUNT";
+    public static final String EXTRA_ACCOUNT_ID = "com.kimirc.shell.extra.ACCOUNT_ID";
     public static final String EXTRA_SLOT = "com.kimirc.shell.extra.SLOT";
     public static final String REMOTE_URL_PREFIX = "https://code-rc.kimi.com/";
 
@@ -54,7 +63,8 @@ public abstract class WebActivity extends Activity {
     private WebView popupView;
     private LoginStateViewer loginStateViewer;
     private ValueCallback<Uri[]> pendingFileCallback;
-    private TextView urlView;
+    private String accountId;
+    private String nicknameProbe;
 
     protected abstract int slotIndex();
 
@@ -73,14 +83,15 @@ public abstract class WebActivity extends Activity {
         }
     }
 
-    public static boolean start(Activity from, int slot, String accountName, String deviceName,
-            String url) {
+    public static boolean start(Activity from, int slot, String accountId, String accountName,
+            String deviceName, String url) {
         Class<?> target = activityForSlot(slot);
         if (target == null) {
             return false;
         }
         Intent intent = new Intent(from, target);
         intent.putExtra(EXTRA_SLOT, slot);
+        intent.putExtra(EXTRA_ACCOUNT_ID, accountId);
         intent.putExtra(EXTRA_ACCOUNT, accountName);
         intent.putExtra(EXTRA_NAME, deviceName);
         intent.putExtra(EXTRA_URL, url);
@@ -91,7 +102,6 @@ public abstract class WebActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
 
         final int slot = slotIndex();
         if (getIntent().getIntExtra(EXTRA_SLOT, -1) != slot) {
@@ -111,13 +121,18 @@ public abstract class WebActivity extends Activity {
             finish();
             return;
         }
+        accountId = getIntent().getStringExtra(EXTRA_ACCOUNT_ID);
 
         setContentView(R.layout.activity_web);
         container = findViewById(R.id.web_container);
         TextView title = findViewById(R.id.web_title);
-        title.setText(deviceName != null && !deviceName.isEmpty() ? deviceName : accountName);
-        urlView = findViewById(R.id.web_url);
-        urlView.setText(url);
+        title.setText(accountName);
+        TextView subtitle = findViewById(R.id.web_subtitle);
+        if (deviceName != null && !deviceName.isEmpty()) {
+            subtitle.setText(deviceName);
+        } else {
+            subtitle.setVisibility(View.GONE);
+        }
 
         findViewById(R.id.web_back).setOnClickListener(new View.OnClickListener() {
             @Override
@@ -177,12 +192,6 @@ public abstract class WebActivity extends Activity {
             }
         });
         menu.show();
-    }
-
-    private void updateUrl(String url) {
-        if (urlView != null && url != null) {
-            urlView.setText(url);
-        }
     }
 
     private static synchronized void applyDataDirectory(int slot) {
@@ -333,11 +342,72 @@ public abstract class WebActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
+    private void captureNickname(WebView view, String url) {
+        if (accountId == null || url == null || !url.startsWith(REMOTE_URL_PREFIX)) {
+            return;
+        }
+        String script = probeScript();
+        if (script == null) {
+            return;
+        }
+        view.evaluateJavascript(script, new ValueCallback<String>() {
+            @Override
+            public void onReceiveValue(String value) {
+                applyNickname(value);
+            }
+        });
+    }
+
+    // evaluateJavascript 回传的是 JS 字面量，先按 JSON 字符串解一层再当对象读。
+    private void applyNickname(String rawResult) {
+        if (rawResult == null || rawResult.isEmpty() || "null".equals(rawResult)) {
+            return;
+        }
+        try {
+            Object decoded = new JSONTokener(rawResult).nextValue();
+            if (!(decoded instanceof String)) {
+                return;
+            }
+            JSONObject payload = new JSONObject((String) decoded);
+            Log.d(TAG, "nickname probe: source=" + payload.optString("source")
+                    + " title=" + payload.optString("title")
+                    + " keys=" + payload.optJSONArray("keys"));
+            String nickname = payload.optString("nickname").trim();
+            if (nickname.isEmpty()) {
+                return;
+            }
+            if (nickname.length() > 40) {
+                nickname = nickname.substring(0, 40);
+            }
+            AccountStore.setNickname(this, accountId, nickname);
+        } catch (JSONException e) {
+            Log.d(TAG, "nickname probe returned unexpected payload");
+        }
+    }
+
+    private String probeScript() {
+        if (nicknameProbe == null) {
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            try (InputStream in = getResources().openRawResource(R.raw.nickname_probe)) {
+                byte[] chunk = new byte[4096];
+                int read;
+                while ((read = in.read(chunk)) > 0) {
+                    buffer.write(chunk, 0, read);
+                }
+            } catch (IOException e) {
+                Log.w(TAG, "nickname probe script unavailable", e);
+                return null;
+            }
+            nicknameProbe = new String(buffer.toByteArray(), StandardCharsets.UTF_8);
+        }
+        return nicknameProbe;
+    }
+
     private class ShellWebViewClient extends WebViewClient {
         @Override
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
-            updateUrl(view.getUrl());
+            captureNickname(view, view.getUrl());
         }
 
         @Override

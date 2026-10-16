@@ -1,9 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 启动窗口只铺底色：开屏动画由 MainActivity 里的 splash_overlay 负责，避免系统静止图和动画之间跳位。 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/app_background" />
-    <item
-        android:drawable="@drawable/logo"
-        android:width="144dp"
-        android:height="144dp"
-        android:gravity="center" />
 </layer-list>

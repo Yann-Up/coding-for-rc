@@ -1,145 +1,189 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/main_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/app_background"
-    android:orientation="vertical">
+    android:background="@color/app_background">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:paddingLeft="@dimen/page_horizontal"
-        android:paddingTop="@dimen/page_top"
-        android:paddingRight="@dimen/page_horizontal"
-        android:paddingBottom="@dimen/header_bottom">
+        android:layout_height="match_parent"
+        android:orientation="vertical">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:orientation="vertical"
+            android:paddingLeft="@dimen/page_horizontal"
+            android:paddingTop="@dimen/page_top"
+            android:paddingRight="@dimen/page_horizontal"
+            android:paddingBottom="@dimen/header_bottom">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:maxLines="1"
+                    android:text="@string/main_title"
+                    android:textAppearance="@style/Text.KimiRC.ScreenTitle" />
+
+                <ImageButton
+                    android:id="@+id/account_button"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/account_switch_title"
+                    android:padding="11dp"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/ic_account" />
+
+                <ImageButton
+                    android:id="@+id/settings_button"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:layout_marginRight="-10dp"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/settings_title"
+                    android:padding="11dp"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/ic_settings" />
+            </LinearLayout>
 
             <TextView
-                android:layout_width="0dp"
+                android:id="@+id/device_count"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:maxLines="1"
-                android:text="@string/main_title"
-                android:textAppearance="@style/Text.KimiRC.ScreenTitle" />
+                android:layout_marginTop="6dp"
+                android:background="@drawable/bg_count_badge"
+                android:fontFamily="sans-serif-medium"
+                android:includeFontPadding="false"
+                android:paddingLeft="10dp"
+                android:paddingTop="6dp"
+                android:paddingRight="10dp"
+                android:paddingBottom="6dp"
+                android:textColor="@color/brand"
+                android:textSize="12sp" />
 
-            <ImageButton
-                android:id="@+id/settings_button"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:layout_marginRight="-10dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="@string/account_switch_title"
-                android:padding="11dp"
-                android:scaleType="centerInside"
-                android:src="@drawable/ic_settings" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="@string/main_subtitle"
+                android:textAppearance="@style/Text.KimiRC.Body" />
         </LinearLayout>
 
-        <TextView
-            android:id="@+id/device_count"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:background="@drawable/bg_count_badge"
-            android:fontFamily="sans-serif-medium"
-            android:includeFontPadding="false"
-            android:paddingLeft="10dp"
-            android:paddingTop="6dp"
-            android:paddingRight="10dp"
-            android:paddingBottom="6dp"
-            android:textColor="@color/brand"
-            android:textSize="12sp" />
-
-        <TextView
+        <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:text="@string/main_subtitle"
-            android:textAppearance="@style/Text.KimiRC.Body" />
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <ListView
+                android:id="@+id/device_list"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:divider="@null"
+                android:dividerHeight="@dimen/list_gap"
+                android:drawSelectorOnTop="false"
+                android:listSelector="@android:color/transparent"
+                android:overScrollMode="ifContentScrolls"
+                android:paddingLeft="@dimen/page_horizontal"
+                android:paddingRight="@dimen/page_horizontal"
+                android:paddingBottom="88dp"
+                android:scrollbars="none" />
+
+            <LinearLayout
+                android:id="@+id/empty_view"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="32dp"
+                android:visibility="gone">
+
+                <ImageView
+                    android:layout_width="96dp"
+                    android:layout_height="96dp"
+                    android:background="@drawable/bg_device_icon"
+                    android:contentDescription="@null"
+                    android:importantForAccessibility="no"
+                    android:padding="26dp"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/ic_device" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="24dp"
+                    android:gravity="center"
+                    android:text="@string/empty_title"
+                    android:textAppearance="@style/Text.KimiRC.SectionTitle" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center"
+                    android:maxWidth="280dp"
+                    android:text="@string/empty_description"
+                    android:textAlignment="center"
+                    android:textAppearance="@style/Text.KimiRC.Body" />
+            </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/add_button"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_gravity="bottom|end"
+                android:layout_margin="20dp"
+                android:background="@drawable/bg_fab"
+                android:contentDescription="@string/add_device"
+                android:elevation="6dp"
+                android:outlineProvider="background"
+                android:padding="16dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_add" />
+        </FrameLayout>
     </LinearLayout>
 
     <FrameLayout
+        android:id="@+id/splash_overlay"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1">
-
-        <ListView
-            android:id="@+id/device_list"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:clipToPadding="false"
-            android:divider="@null"
-            android:dividerHeight="@dimen/list_gap"
-            android:drawSelectorOnTop="false"
-            android:listSelector="@android:color/transparent"
-            android:overScrollMode="ifContentScrolls"
-            android:paddingLeft="@dimen/page_horizontal"
-            android:paddingRight="@dimen/page_horizontal"
-            android:paddingBottom="8dp"
-            android:scrollbars="none" />
+        android:layout_height="match_parent"
+        android:background="@color/app_background"
+        android:clickable="true"
+        android:focusable="true">
 
         <LinearLayout
-            android:id="@+id/empty_view"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:padding="32dp"
-            android:visibility="gone">
+            android:id="@+id/splash_content"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
 
             <ImageView
-                android:layout_width="96dp"
-                android:layout_height="96dp"
-                android:background="@drawable/bg_device_icon"
+                android:id="@+id/splash_logo"
+                android:layout_width="144dp"
+                android:layout_height="144dp"
                 android:contentDescription="@null"
                 android:importantForAccessibility="no"
-                android:padding="26dp"
-                android:scaleType="centerInside"
-                android:src="@drawable/ic_device" />
+                android:scaleType="fitCenter"
+                android:src="@drawable/logo" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="24dp"
-                android:gravity="center"
-                android:text="@string/empty_title"
-                android:textAppearance="@style/Text.KimiRC.SectionTitle" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:gravity="center"
-                android:maxWidth="280dp"
-                android:text="@string/empty_description"
-                android:textAlignment="center"
-                android:textAppearance="@style/Text.KimiRC.Body" />
+            <ProgressBar
+                android:id="@+id/splash_progress"
+                style="?android:attr/progressBarStyle"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginTop="32dp"
+                android:indeterminateTint="@color/brand" />
         </LinearLayout>
     </FrameLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@color/app_background"
-        android:orientation="vertical"
-        android:paddingLeft="@dimen/page_horizontal"
-        android:paddingTop="12dp"
-        android:paddingRight="@dimen/page_horizontal"
-        android:paddingBottom="20dp">
-
-        <Button
-            android:id="@+id/add_button"
-            style="@style/Widget.KimiRC.Button.Primary"
-            android:layout_width="match_parent"
-            android:layout_height="@dimen/control_height"
-            android:drawableLeft="@drawable/ic_add"
-            android:drawablePadding="10dp"
-            android:text="@string/add_device" />
-    </LinearLayout>
-</LinearLayout>
+</FrameLayout>

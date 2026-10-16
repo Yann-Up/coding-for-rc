@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="brand">#5B50D6</color>
+    <color name="brand_fill">#5B50D6</color>
     <color name="brand_soft">#EFEDFC</color>
     <color name="brand_ripple">#33FFFFFF</color>
     <color name="app_background">#F6F7FB</color>

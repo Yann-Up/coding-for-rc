@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 夜景只覆盖系统栏：深色背景要配浅色图标，其余项仍继承 Theme.KimiRC.Base。 -->
+    <style name="Theme.KimiRC" parent="Theme.KimiRC.Base">
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">@color/app_background</item>
+        <item name="android:navigationBarColor">@color/app_background</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <!-- 溢出菜单等框架弹窗的背景取 colorPopupBackground，它跟随 colorBackground；
+             不覆盖的话暗色下会得到浅底配浅字。 -->
+        <item name="android:colorBackground">@color/surface</item>
+    </style>
+</resources>

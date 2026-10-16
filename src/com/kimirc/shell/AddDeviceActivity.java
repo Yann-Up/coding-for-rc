@@ -1,16 +1,14 @@
 package com.kimirc.shell;
 
-import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
-import android.view.WindowManager;
 import android.widget.EditText;
 
-public class AddDeviceActivity extends Activity {
+public class AddDeviceActivity extends ThemedActivity {
 
     private static final int REQ_SCAN = 43;
 
@@ -24,7 +22,6 @@ public class AddDeviceActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         setContentView(R.layout.activity_add_device);
 
         nameInput = findViewById(R.id.name_input);
