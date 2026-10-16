@@ -6,8 +6,14 @@ name: sync-cnb
 #   3. 把该 tag 推到 CNB 仓，触发 CNB 侧 .cnb.yml 的 tag_push 流水线
 #   4. 把 latest.json 提交到 CNB 仓的 updater 分支（该分支只有 latest.json，不夹带源码）
 #
-# 触发用 release: published，而不是 push tags：这样 workflow 取自默认分支，
-# 以后改这个文件不需要重新打标签（tag 事件用的是被 tag 的那个提交里的配置）。
+# 触发用 push: tags，而不是 release: published。被 tag 的那个提交里的 release.yml
+# 是用 Actions 自带的 GITHUB_TOKEN 创建 Release 的，而 GitHub 规定「由 GITHUB_TOKEN 触发的
+# 事件不会再触发新的 workflow 运行」，所以 release: published 对自动流程根本不生效
+# （v0.1.6 就是这么漏掉的，只能手动补一次）。tag push 一定会触发，代价是本文件取自
+# 被 tag 的那个提交，改动要先合进 master 再打标签才生效——与 .cnb.yml 同一条纪律。
+#
+# 因为改成 tag push 触发，本工作流会和 release.yml 同时起跑，而 APK 要等 release.yml
+# 构建签名完才存在，所以下载前有一段带时限的等待（见「等待 Release 附件就绪」）。
 #
 # 这里不改版本号、也不重新构建 APK：版本号由人工同步 build.sh 与 AndroidManifest.xml，
 # tag 与 build.sh 的 VERSION_NAME 是否一致由 tools/release-notes.sh 校验（不一致就让本工作流失败）；
@@ -17,12 +23,13 @@ name: sync-cnb
 # GITHUB_TOKEN 由 Actions 自动提供。token 只经 env 传入，不写文件、不打印。
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       tag:
-        description: "要同步的 tag（需已发布对应 Release，如 v0.1.5）"
+        description: "要同步的 tag（需已发布对应 Release，如 v0.1.6）"
         required: true
         type: string
 
@@ -40,19 +47,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # release 事件取被发布的 tag，手动触发取输入的 tag
-          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          # tag push 取被推的 tag，手动触发取输入的 tag
+          ref: ${{ inputs.tag || github.ref_name }}
           # 必须全量历史：浅克隆（depth=1）往 CNB 推 tag 会被拒（shallow update not allowed）
           fetch-depth: 0
 
       - name: 校验 tag 并读出版本号
         id: meta
         env:
-          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
           if [ -z "$TAG" ]; then
-            echo "::error::missing tag: release event carried no tag_name and no inputs.tag was given"
+            echo "::error::no tag available: neither inputs.tag nor a pushed tag name was found"
             exit 1
           fi
           # tools/release-notes.sh 会校验 tag 与 build.sh 的 VERSION_NAME 一致，
@@ -80,6 +87,26 @@ jobs:
             echo "apk=KimiRC-${VERSION}.apk"
           } >> "$GITHUB_OUTPUT"
           echo "tag=$TAG version=$VERSION versionCode=$VERSION_CODE"
+
+      # tag push 与本工作流同时起跑，而 APK 要等 release.yml 构建并签名完才存在，
+      # 所以这里先等它出现，最多等 12 分钟；超时即失败，不带着拿不到的包继续往下走。
+      - name: 等待 Release 附件就绪
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          APK: ${{ steps.meta.outputs.apk }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 48); do
+            names=$(gh release view "$TAG" --json assets --jq '.assets[].name' 2>/dev/null || true)
+            if printf '%s\n' "$names" | grep -qx "$APK"; then
+              echo "release $TAG has asset $APK (attempt $attempt)"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::release $TAG did not publish $APK within 12 minutes; check the release workflow"
+          exit 1
 
       - name: 下载 APK 并对字节实测 SHA-256
         id: apk
@@ -210,6 +237,12 @@ jobs:
           fi
           cp ../dist/cnb-latest.json latest.json
           git add latest.json
+          # 重跑（或手动补同步）时清单内容不变，直接 commit 会因「nothing to commit」失败；
+          # 内容一致就当作已经同步好，安静退出。
+          if git diff --cached --quiet; then
+            echo "latest.json already up to date on the updater branch"
+            exit 0
+          fi
           git -c user.name="github-actions[bot]" \
               -c user.email="github-actions[bot]@users.noreply.github.com" \
               commit -m "chore: latest.json ${TAG}"
