@@ -9,7 +9,7 @@ Kimi Code Remote Control 的**非官方**开源安卓壳应用（WebView Shell�
 - 不实现任何鉴权与远程协议逻辑——登录、会话同步、设备绑定全部由 Kimi 官方网页与服务完成，应用只负责加载网页、保住登录态、管理本地链接列表。
 - 不逆向、不代理任何 Kimi 接口；不接触账号密码与 OAuth 流程，登录始终在 Kimi 官方页面内完成。
 - 多账号只是本地的登录态分区：应用不提供任何账号体系，也不解析账号数据，只负责把不同账号的网页存储隔离开。
-- 不上架应用商店，GitHub Releases 为唯一分发渠道。
+- 不上架应用商店，官方分发渠道为 GitHub Releases 与 CNB（国内加速），两处产物同名、同 SHA-256、同一签名；请勿从其它渠道安装。
 
 ## 功能
 
@@ -24,6 +24,7 @@ Kimi Code Remote Control 的**非官方**开源安卓壳应用（WebView Shell�
 - 文件选择器：WebView 文件上传桥接到系统文件选择器，支持多选。
 - 截屏保护开关：默认开启，禁止截屏与最近任务预览；关闭后即可正常截图。开关位于主页头部「设置」入口打开的独立设置页内，关闭仅影响本地显示行为，不影响远控连接本身。
 - 设置页：主页头部「设置」入口进入独立设置页面，集中「截屏保护」开关、「外观」主题（跟随系统 / 月之亮面 / 月之暗面，切换后界面即时重建）、应用锁状态（系统未设锁屏时高亮提示）、版本信息（版本名 + 版本号）与「关于」（许可与免责声明）。
+- 检查更新：设置页「版本」行可点按手动检查，检查期间右侧显示「检查中…」；主页在应用锁解锁后静默自动检查一次，自动检查默认开启、24 小时最多一次，可在设置页关闭，只拉取元数据，绝不自动下载或安装。元数据优先读取 CNB，失败回退 GitHub；安装包先走本次元数据来源自己的直链（CNB 元数据即 CNB 附件直链，GitHub 元数据即 GitHub Release 附件），失败再回退另一个源。自动检查已是最新或失败时均完全静默，仅在发现未被「忽略此版本」的新版本时弹窗，可选择「下载并安装」、「稍后」或「忽略此版本」；安装前校验 SHA-256 与签名，安装完成后应用会重启，进行中的远控会话会断开。
 
 ## 安全设计
 
@@ -34,6 +35,7 @@ Kimi Code Remote Control 的**非官方**开源安卓壳应用（WebView Shell�
 - Cookie 按会话凭证保护：面板值默认掩码，用户主动点击才显示；面板读取结果不另行落盘/存储，不记录，不通过日志、Intent 或 Bundle 传递，不提供复制、导出或清除 Cookie。刷新仅通过 `getCookie` 重新读取，不触发 flush；弹窗显式设置 `FLAG_SECURE`，关闭或切后台时清理内存条目与视图。
 - `FLAG_SECURE` 防截屏与最近任务缩略图泄露，默认在所有界面开启，用户可在「设置」页关闭（见「截屏保护开关」）；「登录状态」面板显示凭证，无论开关如何都强制开启。`allowBackup=false` 防书签被系统备份上云。
 - 签名密钥不入库：正式 release 经 CI Secrets 注入；本地与 CI 日常构建使用独立的 debug 密钥，该密钥固定存放于 `~/.android/debug.keystore`（已存在则直接复用），保证同一台机器上 debug 包签名稳定、可覆盖安装。
+- 更新以签名证书为信任锚：安装前比对下载包与当前已安装包的签名证书，不一致即拒绝安装，用于防止没有私钥者替换服务器上的安装包。SHA-256 只负责发现传输损坏；只能连接 CNB 时哈希也来自 CNB，不能单独防范 CNB 内容被篡改，篡改仍由签名校验拦截。两个源的产物同名、同 SHA-256、同一签名；手动检查会核对两个源的版本号与 SHA-256，任一不一致就拒绝本次更新并提示手动核对。校验不通过一律不安装，只提供「打开 Release 页面」兜底，没有「跳过校验继续安装」的选项。`REQUEST_INSTALL_PACKAGES` 权限只用于安装从 GitHub Releases 或 CNB 下载、且 SHA-256 与签名都核对通过的包。
 - 唯一直接依赖 ZXing Core（Apache-2.0，纯 Java 二维码解码，见 NOTICE）随源码固定版本并提供 SHA-256 校验，不引入任何原生库或 GMS 服务。
 
 ## 构建
@@ -72,8 +74,20 @@ python tools/make-icons.py
 | `RELEASE_STORE_PASSWORD` | keystore 口令 |
 | `RELEASE_KEY_ALIAS` | 密钥别名（当前为 `kimirc`） |
 | `RELEASE_KEY_PASSWORD` | 密钥口令 |
+| `CNB_TOKEN` | CNB 访问令牌（含 `repo-contents` 读写；Git 推送用户名固定 `cnb`，仅供 CI，绝不进入客户端） |
 
 自行生成新密钥：`keytool -genkeypair -keystore release.keystore -alias kimirc -keyalg RSA -keysize 2048 -validity 10000`，注意更新上表与下方指纹。
+
+Release 发布后，`.github/workflows/sync-cnb.yml` 会由 `release: published` 触发，也可手动指定 tag：下载本 Release 的 APK 并对字节实测 SHA-256（不从正文抓取字符串），生成 CNB 版清单 `latest.json`，把该 tag 推到 CNB 仓，再把清单提交到 CNB 仓的 `updater` 分支（该分支只有 `latest.json`）。工作流会检查被 tag 的提交中是否存在 `.cnb.yml`，不存在就直接失败，避免发出指向死链的清单。
+
+仓库根目录的 `.cnb.yml` 是 CNB 侧流水线，由 `tag_push` 触发，用内置任务 `git:release` 创建同名 Release，再把 APK 从 GitHub Release 拉到 CNB 挂成 Release 附件。CNB 的 `tag_push` 使用被 tag 的那个提交里的 `.cnb.yml`，所以修改 `.cnb.yml` 必须先合入 `master` 再打新标签才生效；`sync-cnb.yml` 使用默认分支的版本，修改后不需要重新打标签。
+
+目前仍有以下待验证项与已知风险：
+
+- CNB 构建节点能否出网访问 github.com 尚未验证；拉不到 APK 时同步会失败。
+- 「清单已发布、CNB 附件还没上传完」存在几分钟窗口，期间 CNB 直链会短暂 404；客户端会自动回退 GitHub，不影响使用。
+- CNB 仓目前是空仓，首次同步后只有 tag 与 `updater` 分支，没有默认分支。
+- 客户端在 CNB raw 通道失效时会尝试第二种 CNB 形态（固定 tag 的 Release 附件），但 CI 目前还没有发布那一份；这是 raw 通道万一变动时的兜底预留。
 
 ## 版本校验
 
@@ -83,7 +97,7 @@ release 签名证书 SHA-256 指纹（可用 `apksigner verify --print-certs Kim
 D2CC3CE9BD943333D27CBBF810026645D3F9AE131E0D4C27D3637249911046FF
 ```
 
-debug 构建使用另一把密钥，仅用于本地开发与 CI artifact，勿用于分发。请只从本仓库的 GitHub Releases 下载安装包，以防第三方渠道夹带篡改包。
+debug 构建使用另一把密钥，仅用于本地开发与 CI artifact，勿用于分发。GitHub Releases 与 CNB 两个渠道的产物同名、同 SHA-256、同一签名；客户端通过比对下载包与当前已安装包的签名证书核对更新，上方 README 证书指纹供人工核对。请只从这两个官方渠道下载安装包，以防第三方渠道夹带篡改包。
 
 v0.1.0 起换用了上述新密钥：与更早的构建（v1.1.0 及以前）签名不兼容，安装前需先卸载旧包，无法直接覆盖升级。
 

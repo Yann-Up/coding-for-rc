@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingLeft="24dp"
+    android:paddingTop="4dp"
+    android:paddingRight="24dp"
+    android:paddingBottom="4dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/update_current"
+                android:textAppearance="@style/Text.KimiRC.Caption" />
+
+            <TextView
+                android:id="@+id/update_current"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/text_primary"
+                android:textSize="@dimen/text_body" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="12dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/update_latest"
+                android:textAppearance="@style/Text.KimiRC.Caption" />
+
+            <TextView
+                android:id="@+id/update_latest"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/brand"
+                android:textSize="@dimen/text_body" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/update_notes_label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:text="@string/update_notes"
+        android:textAppearance="@style/Text.KimiRC.Caption" />
+
+    <TextView
+        android:id="@+id/update_notes"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:textAppearance="@style/Text.KimiRC.Body" />
+
+    <TextView
+        android:id="@+id/update_source"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:textAppearance="@style/Text.KimiRC.Caption" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="@string/update_install_hint"
+        android:textAppearance="@style/Text.KimiRC.Caption" />
+</LinearLayout>

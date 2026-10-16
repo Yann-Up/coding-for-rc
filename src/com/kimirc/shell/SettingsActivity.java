@@ -21,6 +21,8 @@ public class SettingsActivity extends ThemedActivity {
     private TextView themeValue;
     private TextView appLockValue;
     private TextView appLockHint;
+    private TextView versionValue;
+    private UpdatePrompt updatePrompt;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -40,8 +42,25 @@ public class SettingsActivity extends ThemedActivity {
         appLockValue = findViewById(R.id.app_lock_value);
         appLockHint = findViewById(R.id.app_lock_hint);
 
-        TextView versionValue = findViewById(R.id.version_value);
+        versionValue = findViewById(R.id.version_value);
         versionValue.setText(versionLabel());
+
+        updatePrompt = new UpdatePrompt(this);
+        findViewById(R.id.version_row).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                checkUpdate();
+            }
+        });
+
+        Switch autoUpdateSwitch = findViewById(R.id.auto_update_switch);
+        autoUpdateSwitch.setChecked(UpdateStore.autoCheckEnabled(this));
+        autoUpdateSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                UpdateStore.setAutoCheckEnabled(SettingsActivity.this, isChecked);
+            }
+        });
 
         Switch screenshotSwitch = findViewById(R.id.screenshot_switch);
         screenshotSwitch.setChecked(!PrivacyStore.allowScreenshots(this));
@@ -74,6 +93,25 @@ public class SettingsActivity extends ThemedActivity {
     protected void onResume() {
         super.onResume();
         refreshAppLock();
+        // 刚去系统设置里授权过「安装未知应用」的话，这里接着把更新装完。
+        updatePrompt.onResume();
+    }
+
+    @Override
+    protected void onDestroy() {
+        updatePrompt.destroy();
+        super.onDestroy();
+    }
+
+    // 手动检查：先在本行右侧给出「检查中…」，检查结束无论成败都还原成本机版本号。
+    private void checkUpdate() {
+        versionValue.setText(R.string.settings_update_checking);
+        updatePrompt.checkManually(new Runnable() {
+            @Override
+            public void run() {
+                versionValue.setText(versionLabel());
+            }
+        });
     }
 
     private void showThemeDialog() {

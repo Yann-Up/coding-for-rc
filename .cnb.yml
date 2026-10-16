@@ -1,0 +1,54 @@
+# KimiRC 的 CNB 侧流水线（cnb.cool）
+#
+# 目的：GitHub Release 发布后，.github/workflows/sync-cnb.yml 会把同一个 tag 推到这里，
+#      本流水线在 CNB 上创建同名 Release，并把 APK 从 GitHub Release 拉过来挂成 Release 附件。
+#      客户端清单 latest.json 里的 android.url 就指向这个 CNB 附件直链（国内下载加速）。
+#
+# 重要坑：tag_push 事件用的是「被 tag 的那个提交」里的 .cnb.yml（CNB 文档「配置文件版本选择」）。
+#        改这个文件必须先合进 master 再打新标签才会生效；对已推过去的旧 tag 重新触发，
+#        跑的仍然是当时那份配置。
+#
+# 前提：CNB 构建节点要能出网访问 github.com，才能把 APK 拉过来。
+#      这一点无法在本地验证——若 runner 出网受限，下载阶段会直接失败（脚本里不吞错误）。
+#
+# 这里不构建也不签名 APK：APK 由 GitHub 侧的 release.yml 构建并签名，CNB 只做搬运与挂附件。
+
+"v*":
+  tag_push:
+    - name: cnb-release
+      env:
+        GH_SLUG: Yann-Up/coding-for-rc
+      stages:
+        # 必须先建 Release：cnbcool/attachments 只能往已存在的 Release 上传附件
+        - name: 创建 CNB Release
+          type: git:release
+          options:
+            # tag_push 事件不用传 tag（直接取触发事件的 tag），title 默认也取 tag 名，即同名 Release
+            description: 非官方社区构建，仅供自用与学习，与 Moonshot AI 无关。完整说明见 [GitHub Release](https://github.com/Yann-Up/coding-for-rc/releases/tag/${CNB_BRANCH})
+        - name: 从 GitHub Release 下载 APK
+          script: |
+            set -eu
+            TAG="${CNB_BRANCH}"
+            VERSION="${TAG#v}"
+            APK="KimiRC-${VERSION}.apk"
+            OUT="dist/${APK}"
+            URL="https://github.com/${GH_SLUG}/releases/download/${TAG}/${APK}"
+            command -v curl >/dev/null 2>&1 || { echo "curl not found in the build image" >&2; exit 1; }
+            mkdir -p dist
+            echo "downloading ${URL}"
+            curl -fL --retry 3 --retry-delay 5 --connect-timeout 20 -o "${OUT}" "${URL}"
+            # 确认拿到的是真 APK（zip 以 PK 开头），避免把错误页/跳转页挂成附件
+            MAGIC=$(head -c 2 "${OUT}")
+            [ "${MAGIC}" = "PK" ] || { echo "downloaded file is not a zip/apk: ${URL}" >&2; exit 1; }
+            ls -l dist
+            sha256sum "${OUT}"
+        - name: 上传 APK 到 CNB Release 附件
+          image: cnbcool/attachments:latest
+          settings:
+            # tag_push 事件里 tag 取环境变量 $CNB_BRANCH，无需指定
+            attachments:
+              - "./dist/*.apk"
+          exports:
+            FILES: ATTACHMENT_FILES
+        - name: 输出附件地址
+          script: echo "attached ${ATTACHMENT_FILES}"

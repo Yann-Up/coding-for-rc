@@ -43,10 +43,12 @@ public class MainActivity extends ThemedActivity {
     private AlertDialog accountDialog;
     private AccountStore.Account activeAccount;
     private View splashOverlay;
+    private UpdatePrompt updatePrompt;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        updatePrompt = new UpdatePrompt(this);
         if (savedInstanceState != null) {
             unlocked = savedInstanceState.getBoolean("unlocked", false);
         }
@@ -71,6 +73,8 @@ public class MainActivity extends ThemedActivity {
             authenticate();
         } else if (adapter != null) {
             refresh();
+            // 解锁状态下回到前台顺手看一眼有没有新版本（开关与 24 小时间隔都在内部判断）。
+            updatePrompt.checkSilently();
         }
     }
 
@@ -137,6 +141,7 @@ public class MainActivity extends ThemedActivity {
         if (splashOverlay != null) {
             splashOverlay.removeCallbacks(splashDone);
         }
+        updatePrompt.destroy();
         super.onDestroy();
     }
 
@@ -232,6 +237,8 @@ public class MainActivity extends ThemedActivity {
         } else {
             refresh();
         }
+        // 检查更新是解锁之后才做的事：应用锁是核心防线，未解锁不做任何后台动作。
+        updatePrompt.checkSilently();
     }
 
     private void showNoLockscreenHint() {

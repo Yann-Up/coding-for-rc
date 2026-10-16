@@ -1,0 +1,216 @@
+name: sync-cnb
+
+# 把 GitHub Release 同步到 CNB（cnb.cool），作为国内下载加速渠道：
+#   1. 取本 Release 的 APK，对文件字节实测 SHA-256（不从 Release 正文里正则抓哈希字符串）
+#   2. 生成 CNB 版清单 latest.json（客户端契约）
+#   3. 把该 tag 推到 CNB 仓，触发 CNB 侧 .cnb.yml 的 tag_push 流水线
+#   4. 把 latest.json 提交到 CNB 仓的 updater 分支（该分支只有 latest.json，不夹带源码）
+#
+# 触发用 release: published，而不是 push tags：这样 workflow 取自默认分支，
+# 以后改这个文件不需要重新打标签（tag 事件用的是被 tag 的那个提交里的配置）。
+#
+# 这里不改版本号、也不重新构建 APK：版本号由人工同步 build.sh 与 AndroidManifest.xml，
+# tag 与 build.sh 的 VERSION_NAME 是否一致由 tools/release-notes.sh 校验（不一致就让本工作流失败）；
+# 签名 APK 由已有的 release.yml 在 tag push 时产出，本工作流只做搬运和核对。
+#
+# 只依赖一个自定义 secret：CNB_TOKEN（CNB 访问令牌，需含 repo-contents 读写权限），
+# GITHUB_TOKEN 由 Actions 自动提供。token 只经 env 传入，不写文件、不打印。
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要同步的 tag（需已发布对应 Release，如 v0.1.5）"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CNB_REPO: Yann-Up/coding-for-rc
+  CNB_WEB: https://cnb.cool/Yann-Up/coding-for-rc
+  GH_WEB: https://github.com/Yann-Up/coding-for-rc
+
+jobs:
+  sync-cnb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # release 事件取被发布的 tag，手动触发取输入的 tag
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          # 必须全量历史：浅克隆（depth=1）往 CNB 推 tag 会被拒（shallow update not allowed）
+          fetch-depth: 0
+
+      - name: 校验 tag 并读出版本号
+        id: meta
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "$TAG" ]; then
+            echo "::error::missing tag: release event carried no tag_name and no inputs.tag was given"
+            exit 1
+          fi
+          # tools/release-notes.sh 会校验 tag 与 build.sh 的 VERSION_NAME 一致，
+          # 并取出 README 更新记录里该 tag 的条目原文，用于 CNB 版清单的 notes。
+          bash tools/release-notes.sh "$TAG" > changelog.md
+          # 被 tag 的那个提交里必须有 .cnb.yml：CNB 只从该 tag 读流水线配置，
+          # 没有它就不会建 Release、不会有附件，清单里的 CNB 直链会是死链。
+          # 这种情况直接失败——宁可失败，也不要发出指不到东西的清单。
+          if [ ! -f .cnb.yml ]; then
+            echo "::error::tag $TAG does not contain .cnb.yml; the CNB pipeline cannot run for it, so the CNB release and its APK attachment would never appear"
+            exit 1
+          fi
+          VERSION=$(awk -F'"' '/^VERSION_NAME="/ { print $2; exit }' build.sh)
+          VERSION_CODE=$(awk -F= '/^VERSION_CODE=/ { print $2; exit }' build.sh)
+          case "$VERSION_CODE" in
+            ''|*[!0-9]*)
+              echo "::error::VERSION_CODE not readable from build.sh"
+              exit 1
+              ;;
+          esac
+          {
+            echo "tag=$TAG"
+            echo "version=$VERSION"
+            echo "version_code=$VERSION_CODE"
+            echo "apk=KimiRC-${VERSION}.apk"
+          } >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG version=$VERSION versionCode=$VERSION_CODE"
+
+      - name: 下载 APK 并对字节实测 SHA-256
+        id: apk
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          APK: ${{ steps.meta.outputs.apk }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh release download "$TAG" --dir dist --pattern "$APK" --clobber
+          if [ ! -f "dist/$APK" ]; then
+            echo "::error::release $TAG has no asset named $APK"
+            exit 1
+          fi
+          ls -l dist
+          SIZE=$(stat -c %s "dist/$APK")
+          # 只用实测值：正文里的哈希字符串由人写，可能过时或打错
+          SHA256=$(sha256sum "dist/$APK" | awk '{print $1}')
+          echo "size=$SIZE sha256=$SHA256"
+          {
+            echo "size=$SIZE"
+            echo "sha256=$SHA256"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 解析 Release 正文里的证书指纹与发布时间
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --json body -q .body > release-body.md
+          cat release-body.md
+          # release.yml 写的正文格式：- Signer #1 certificate SHA-256 digest: <64位hex>
+          CERT=$(sed -n 's/.*Signer #1 certificate SHA-256 digest: *\([0-9a-fA-F]\{64\}\).*/\1/p' release-body.md \
+            | head -n 1 | tr 'A-F' 'a-f')
+          if [ -z "$CERT" ]; then
+            echo "::error::no \"Signer #1 certificate SHA-256 digest\" line found in release $TAG body"
+            exit 1
+          fi
+          # pub_date 取 Release 的发布时间（重跑时保持稳定），并统一补成带毫秒的 ISO8601
+          PUB_DATE=$(gh release view "$TAG" --json publishedAt -q .publishedAt)
+          PUB_DATE=$(jq -rn --arg d "$PUB_DATE" '$d | sub("\\.[0-9]+Z$"; "Z") | sub("Z$"; ".000Z")')
+          echo "pub_date=$PUB_DATE cert=$CERT"
+          {
+            echo "pub_date=$PUB_DATE"
+            echo "cert=$CERT"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 生成 CNB 版清单 latest.json
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          VERSION_CODE: ${{ steps.meta.outputs.version_code }}
+          APK: ${{ steps.meta.outputs.apk }}
+          SIZE: ${{ steps.apk.outputs.size }}
+          SHA256: ${{ steps.apk.outputs.sha256 }}
+          PUB_DATE: ${{ steps.release.outputs.pub_date }}
+          CERT: ${{ steps.release.outputs.cert }}
+        run: |
+          set -euo pipefail
+          # notes 是 README 更新记录里的原始 Markdown（含 ** 与换行），用 --rawfile 读入由 jq 负责转义
+          jq -cn \
+            --arg version "$VERSION" \
+            --argjson versionCode "$VERSION_CODE" \
+            --arg pub_date "$PUB_DATE" \
+            --rawfile notes changelog.md \
+            --arg url "${CNB_WEB}/-/releases/download/${TAG}/${APK}" \
+            --argjson size "$SIZE" \
+            --arg sha256 "$SHA256" \
+            --arg certSha256 "$CERT" \
+            --arg github "${GH_WEB}/releases/tag/${TAG}" \
+            --arg cnb "${CNB_WEB}/-/releases/tag/${TAG}" \
+            '{
+               version: $version,
+               versionCode: $versionCode,
+               pub_date: $pub_date,
+               notes: ($notes | sub("\n+$"; "")),
+               android: {
+                 url: $url,
+                 size: $size,
+                 sha256: $sha256,
+                 certSha256: $certSha256
+               },
+               github: $github,
+               cnb: $cnb
+             }' > dist/cnb-latest.json
+          jq -e '
+            (.version | length > 0) and
+            (.versionCode | type == "number") and
+            (.notes | length > 0) and
+            (.android.url | startswith("https://cnb.cool/")) and
+            (.android.size > 0) and
+            (.android.sha256 | test("^[0-9a-f]{64}$")) and
+            (.android.certSha256 | test("^[0-9a-f]{64}$"))
+          ' dist/cnb-latest.json > /dev/null
+          cat dist/cnb-latest.json
+
+      - name: 推 tag 到 CNB
+        env:
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CNB_TOKEN:-}" ]; then
+            echo "::error::missing secret CNB_TOKEN"
+            exit 1
+          fi
+          # 用户名固定是 cnb，密码是 token；token 不出现在日志里（set -x 未开启）
+          git push "https://cnb:${CNB_TOKEN}@cnb.cool/${CNB_REPO}.git" "refs/tags/${TAG}:refs/tags/${TAG}"
+
+      - name: 把 latest.json 提交到 CNB 的 updater 分支
+        env:
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git clone --depth 1 "https://cnb:${CNB_TOKEN}@cnb.cool/${CNB_REPO}.git" cnb-sync
+          cd cnb-sync
+          if git ls-remote --exit-code origin updater >/dev/null 2>&1; then
+            git fetch --depth 1 origin updater
+            git checkout -b updater FETCH_HEAD
+          else
+            # 首次创建：orphan 分支，保证 updater 上只有 latest.json，不夹带源码
+            git checkout --orphan updater
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
+          cp ../dist/cnb-latest.json latest.json
+          git add latest.json
+          git -c user.name="github-actions[bot]" \
+              -c user.email="github-actions[bot]@users.noreply.github.com" \
+              commit -m "chore: latest.json ${TAG}"
+          git push origin updater

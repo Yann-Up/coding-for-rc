@@ -198,6 +198,54 @@
                 android:maxLines="1"
                 android:textAppearance="@style/Text.KimiRC.Caption"
                 android:textColor="@color/text_secondary" />
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginLeft="6dp"
+                android:contentDescription="@null"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_chevron_right" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/auto_update_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="@dimen/list_gap"
+            android:background="@drawable/bg_card"
+            android:gravity="center_vertical"
+            android:minHeight="56dp"
+            android:orientation="horizontal"
+            android:paddingLeft="16dp"
+            android:paddingRight="16dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="@string/settings_auto_update"
+                    android:textColor="@color/text_primary"
+                    android:textSize="@dimen/text_device_name" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="@string/settings_auto_update_hint"
+                    android:textAppearance="@style/Text.KimiRC.Caption" />
+            </LinearLayout>
+
+            <Switch
+                android:id="@+id/auto_update_switch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
         </LinearLayout>
 
         <LinearLayout
