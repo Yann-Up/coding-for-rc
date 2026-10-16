@@ -20,10 +20,12 @@ public final class DeviceStore {
     }
 
     public static class Device {
+        public final String accountId;
         public final String name;
         public final String url;
 
-        public Device(String name, String url) {
+        public Device(String accountId, String name, String url) {
+            this.accountId = accountId;
             this.name = name;
             this.url = url;
         }
@@ -40,18 +42,36 @@ public final class DeviceStore {
                     if (item == null) {
                         continue;
                     }
+                    String accountId = item.optString("account");
                     String name = item.optString("name");
                     String url = item.optString("url");
                     if (name.isEmpty() || !url.startsWith(WebActivity.REMOTE_URL_PREFIX)) {
                         continue;
                     }
-                    devices.add(new Device(name, url));
+                    if (accountId.isEmpty()) {
+                        accountId = AccountStore.DEFAULT_ID;
+                    }
+                    devices.add(new Device(accountId, name, url));
                 }
             } catch (JSONException e) {
                 return new ArrayList<>();
             }
             return devices;
         }
+    }
+
+    public static List<Device> load(Context context, String accountId) {
+        List<Device> devices = new ArrayList<>();
+        for (Device device : load(context)) {
+            if (device.accountId.equals(accountId)) {
+                devices.add(device);
+            }
+        }
+        return devices;
+    }
+
+    public static int count(Context context, String accountId) {
+        return load(context, accountId).size();
     }
 
     public static void add(Context context, Device device) {
@@ -66,7 +86,20 @@ public final class DeviceStore {
         synchronized (LOCK) {
             List<Device> devices = load(context);
             for (int i = devices.size() - 1; i >= 0; i--) {
-                if (devices.get(i).url.equals(target.url)) {
+                Device device = devices.get(i);
+                if (device.url.equals(target.url) && device.accountId.equals(target.accountId)) {
+                    devices.remove(i);
+                }
+            }
+            save(context, devices);
+        }
+    }
+
+    public static void removeAll(Context context, String accountId) {
+        synchronized (LOCK) {
+            List<Device> devices = load(context);
+            for (int i = devices.size() - 1; i >= 0; i--) {
+                if (devices.get(i).accountId.equals(accountId)) {
                     devices.remove(i);
                 }
             }
@@ -79,6 +112,7 @@ public final class DeviceStore {
         try {
             for (Device device : devices) {
                 JSONObject item = new JSONObject();
+                item.put("account", device.accountId);
                 item.put("name", device.name);
                 item.put("url", device.url);
                 array.put(item);

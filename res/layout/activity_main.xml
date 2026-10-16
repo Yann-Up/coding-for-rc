@@ -50,17 +50,22 @@
                 android:layout_weight="1" />
 
             <TextView
-                android:id="@+id/cookie_button"
+                android:id="@+id/account_button"
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:drawablePadding="4dp"
+                android:drawableRight="@drawable/ic_chevron_down"
+                android:ellipsize="end"
                 android:fontFamily="sans-serif-medium"
                 android:gravity="center"
                 android:includeFontPadding="false"
+                android:maxLines="1"
+                android:maxWidth="160dp"
                 android:minWidth="48dp"
                 android:paddingLeft="12dp"
                 android:paddingRight="12dp"
-                android:text="@string/cookie_title"
+                android:text="@string/default_account_name"
                 android:textColor="@color/brand"
                 android:textSize="14sp" />
         </LinearLayout>

@@ -8,14 +8,16 @@ Kimi Code Remote Control 的**非官方**开源安卓壳应用（WebView Shell�
 
 - 不实现任何鉴权与远程协议逻辑——登录、会话同步、设备绑定全部由 Kimi 官方网页与服务完成，应用只负责加载网页、保住登录态、管理本地链接列表。
 - 不逆向、不代理任何 Kimi 接口；不接触账号密码与 OAuth 流程，登录始终在 Kimi 官方页面内完成。
+- 多账号只是本地的登录态分区：应用不提供任何账号体系，也不解析账号数据，只负责把不同账号的网页存储隔离开。
 - 不上架应用商店，GitHub Releases 为唯一分发渠道。
 
 ## 功能
 
-- 设备书签：本地列表管理远控链接（名称 + 链接），一键直达；添加时支持剪贴板自动粘贴或相机扫描二维码，结果自动回填；长按删除。
+- 多账号：每个账号对应一个独立的 WebView 进程与独立数据目录，cookie、localStorage、IndexedDB、缓存全部隔离，互不串号；最多 4 个账号。主页只显示当前账号的设备，切换账号即切换登录态，各账号可同时保持登录。
+- 设备书签：本地列表管理远控链接（名称 + 链接），一键直达；添加时支持剪贴板自动粘贴或相机扫描二维码，结果自动回填；长按删除。设备归属于账号。
 - 登录一次、长期保持：Cookie 持久化，切后台主动 flush 落盘，杀进程不丢登录态。
-- Cookie 查看：用户可从主界面主动打开面板；仅此时通过 WebView 读取固定远控地址前缀当前的 Cookie 用于显示，不展示完整设备链接。Cookie 值默认掩码，须手动点击才显示。
-- 启动级应用锁：生物识别 / 锁屏密码验证通过后主界面才可见；切到桌面或其它应用再回来需重新验证（应用内跳转不触发）；验证失败或取消直接退出。API 28+ 走 BiometricPrompt，API 26–27 走系统设备凭据确认。
+- 账号管理：在远控页顶栏打开「账号管理」面板，查看当前账号的登录状态；仅此时通过 WebView 读取固定远控地址前缀当前的 Cookie 用于显示，不展示完整设备链接。凭证值默认掩码，须手动点击才显示。
+- 启动级应用锁：生物识别 / 锁屏密码验证通过后主界面才可见；切到桌面或其它应用再回来需重新验证（应用内跳转不触发）；验证失败或取消直接退出；成功解锁后切换账号会再验证一次，取消则不切换。API 28+ 走 BiometricPrompt。
 - 域名白名单：壳内只允许 `kimi.com` 系域名且仅 HTTPS；其余链接（含网页内 `window.open`）一律交给系统浏览器。
 - 传输安全：不允许任何 SSL 错误绕过；禁止明文 HTTP。
 - 外部链接直达：系统内点击 `code-rc.kimi.com` 链接可弹窗选择用 KimiRC 打开。
@@ -24,19 +26,23 @@ Kimi Code Remote Control 的**非官方**开源安卓壳应用（WebView Shell�
 ## 安全设计
 
 - **远控链接等价于整台电脑的控制权**，因此安全是首要设计约束。应用锁是防止"手机丢失 → 设备被接管"的核心防线，请务必同时设置系统锁屏。
-- 账号密码与 OAuth 零接触：登录流程全部发生在 Kimi 官方页面内；Cookie 由系统 WebView 管理。用户主动打开 Cookie 面板时，应用会读取固定远控地址前缀当前的 Cookie 用于显示。
+- **远控链接多一条、账号多一个，都等于多一台电脑的控制权**。所以多账号会放大"一次解锁"能触达的范围，成功解锁后切换账号会再验证一次身份；验证取消则不切换，也不会退出应用。
+- 账号间存储隔离：每个账号一个独立进程 + 独立 WebView 数据目录（`WebView.setDataDirectorySuffix`），cookie 与站点存储不跨账号；删除账号只释放槽位，该槽位下次被占用前会清空其存储。
+- 账号密码与 OAuth 零接触：登录流程全部发生在 Kimi 官方页面内；Cookie 由系统 WebView 管理。用户主动打开「账号管理」面板时，应用会读取固定远控地址前缀当前的 Cookie 用于显示（面板必须运行在账号自己的进程里才能读到该账号的 cookie，因此入口放在远控页顶栏而非主页）。
 - Cookie 按会话凭证保护：面板值默认掩码，用户主动点击才显示；面板读取结果不另行落盘/存储，不记录，不通过日志、Intent 或 Bundle 传递，不提供复制、导出或清除 Cookie。刷新仅通过 `getCookie` 重新读取，不触发 flush；弹窗显式设置 `FLAG_SECURE`，关闭或切后台时清理内存条目与视图。
 - `FLAG_SECURE` 防截屏与最近任务缩略图泄露；`allowBackup=false` 防书签被系统备份上云。
-- 签名密钥不入库：正式 release 经 CI Secrets 注入；本地与 CI 日常构建使用独立的 debug 密钥。
+- 签名密钥不入库：正式 release 经 CI Secrets 注入；本地与 CI 日常构建使用独立的 debug 密钥，该密钥固定存放于 `~/.android/debug.keystore`（已存在则直接复用），保证同一台机器上 debug 包签名稳定、可覆盖安装。
 - 唯一直接依赖 ZXing Core（Apache-2.0，纯 Java 二维码解码，见 NOTICE）随源码固定版本并提供 SHA-256 校验，不引入任何原生库或 GMS 服务。
 
 ## 构建
 
 无 Gradle、无 Android Studio 依赖，仅需：
 
-- JDK 8+（`javac` 在 PATH 中）
-- Android SDK（含 `platforms;android-34` 与 `build-tools;34.0.0`），通过 `ANDROID_HOME` / `ANDROID_SDK_ROOT` 指定，或直接装在默认目录
+- JDK 21（`javac` 在 PATH 中；构建前会校验版本，低于 21 直接报错退出）
+- Android SDK（含 `platforms;android-34` 与 `build-tools;35.0.0`），通过 `ANDROID_HOME` / `ANDROID_SDK_ROOT` 指定，或直接装在默认目录
 - python3（或 zip），用于打包
+
+JDK 与 build-tools 的版本是绑定的：34.0.0 自带的 d8（R8 8.2.2）在解析 JDK 21 为内部类构造函数生成的空名 `MethodParameters` 属性时会抛 NPE，必须用 35.0.0 及以上（R8 8.6.2 已修复）。字节码目标仍为 Java 8，以保留 `-bootclasspath android.jar` 对平台 API 面的约束。
 
 ```bash
 bash build.sh        # 默认 debug 签名，产物 dist/KimiRC-<版本>.apk
@@ -69,7 +75,7 @@ debug 构建使用另一把密钥，仅用于本地开发与 CI artifact，勿�
 
 ## 技术栈
 
-Java · 原生 View + WebView · Camera2 · ZXing Core（Apache-2.0）· aapt2 + javac + d8 + zipalign + apksigner 脚本化构建 · SharedPreferences + JSON · minSdk 26 / targetSdk 34
+Java · 原生 View + 多进程 WebView（每账号一进程 + 独立数据目录）· Camera2 · ZXing Core（Apache-2.0）· aapt2 + javac + d8 + zipalign + apksigner 脚本化构建 · SharedPreferences + JSON · minSdk 28 / targetSdk 34
 
 ## 更新记录
 

@@ -9,57 +9,167 @@ import android.net.Uri;
 import android.net.http.SslError;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.SslErrorHandler;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
+import android.webkit.WebStorage;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.WebViewDatabase;
 import android.widget.FrameLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
-public class WebActivity extends Activity {
+public abstract class WebActivity extends Activity {
 
     public static final String EXTRA_NAME = "com.kimirc.shell.extra.NAME";
     public static final String EXTRA_URL = "com.kimirc.shell.extra.URL";
+    public static final String EXTRA_ACCOUNT = "com.kimirc.shell.extra.ACCOUNT";
+    public static final String EXTRA_SLOT = "com.kimirc.shell.extra.SLOT";
     public static final String REMOTE_URL_PREFIX = "https://code-rc.kimi.com/";
+
+    public static final int SLOT_COUNT = 4;
 
     private static final String TAG = "KimiRC";
     private static final int REQ_FILE_CHOOSER = 42;
     private static final String ALLOWED_HOST = "kimi.com";
-    private static final String REMOTE_HOST = "code-rc.kimi.com";
+    private static final String DATA_DIRECTORY_PREFIX = "acct";
 
-    private FrameLayout root;
+    // 数据目录后缀是进程级的，每个进程只能定一次；槽位与进程一一对应，所以这里只会被赋值一次。
+    private static int appliedSlot = -1;
+
+    private FrameLayout container;
     private WebView webView;
     private WebView popupView;
+    private CookieViewer cookieViewer;
     private ValueCallback<Uri[]> pendingFileCallback;
+
+    protected abstract int slotIndex();
+
+    public static Class<?> activityForSlot(int slot) {
+        switch (slot) {
+            case 0:
+                return WebActivity0.class;
+            case 1:
+                return WebActivity1.class;
+            case 2:
+                return WebActivity2.class;
+            case 3:
+                return WebActivity3.class;
+            default:
+                return null;
+        }
+    }
+
+    public static boolean start(Activity from, int slot, String accountName, String deviceName,
+            String url) {
+        Class<?> target = activityForSlot(slot);
+        if (target == null) {
+            return false;
+        }
+        Intent intent = new Intent(from, target);
+        intent.putExtra(EXTRA_SLOT, slot);
+        intent.putExtra(EXTRA_ACCOUNT, accountName);
+        intent.putExtra(EXTRA_NAME, deviceName);
+        intent.putExtra(EXTRA_URL, url);
+        from.startActivity(intent);
+        return true;
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
 
-        String name = getIntent().getStringExtra(EXTRA_NAME);
-        String url = getIntent().getStringExtra(EXTRA_URL);
+        final int slot = slotIndex();
+        if (getIntent().getIntExtra(EXTRA_SLOT, -1) != slot) {
+            finish();
+            return;
+        }
+        applyDataDirectory(slot);
+
+        final String url = getIntent().getStringExtra(EXTRA_URL);
         if (url == null || !url.startsWith(REMOTE_URL_PREFIX)) {
             finish();
             return;
         }
-        setTitle(name != null && !name.isEmpty() ? name : url);
+        String deviceName = getIntent().getStringExtra(EXTRA_NAME);
+        final String accountName = getIntent().getStringExtra(EXTRA_ACCOUNT);
+        if (accountName == null) {
+            finish();
+            return;
+        }
 
-        root = new FrameLayout(this);
+        setContentView(R.layout.activity_web);
+        container = findViewById(R.id.web_container);
+        TextView title = findViewById(R.id.web_title);
+        title.setText(deviceName != null && !deviceName.isEmpty() ? deviceName : accountName);
+
+        findViewById(R.id.web_back).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                onBackPressed();
+            }
+        });
+        findViewById(R.id.web_reload).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (webView != null) {
+                    webView.reload();
+                }
+            }
+        });
+        findViewById(R.id.web_cookie).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (cookieViewer != null) {
+                    cookieViewer.dismiss();
+                }
+                cookieViewer = CookieViewer.show(WebActivity.this, accountName);
+            }
+        });
+
         webView = new WebView(this);
         applySettings(webView);
         webView.setWebViewClient(new ShellWebViewClient());
         webView.setWebChromeClient(new ShellWebChromeClient());
-        root.addView(webView, new FrameLayout.LayoutParams(
+        container.addView(webView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        setContentView(root);
+
+        if (AccountStore.hasWipePending(this, slot)) {
+            wipeSlotStorage(slot);
+        }
         webView.loadUrl(url);
+    }
+
+    private static synchronized void applyDataDirectory(int slot) {
+        if (appliedSlot == slot) {
+            return;
+        }
+        if (appliedSlot != -1) {
+            throw new IllegalStateException(
+                    "data directory already set for slot " + appliedSlot);
+        }
+        WebView.setDataDirectorySuffix(DATA_DIRECTORY_PREFIX + slot);
+        appliedSlot = slot;
+    }
+
+    private void wipeSlotStorage(int slot) {
+        CookieManager.getInstance().removeAllCookies(null);
+        CookieManager.getInstance().flush();
+        WebStorage.getInstance().deleteAllData();
+        WebViewDatabase.getInstance(this).clearFormData();
+        webView.clearCache(true);
+        webView.clearHistory();
+        AccountStore.clearWipePending(this, slot);
+        Log.i(TAG, "slot " + slot + " storage wiped");
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -82,17 +192,40 @@ public class WebActivity extends Activity {
     }
 
     @Override
+    protected void onStop() {
+        super.onStop();
+        if (cookieViewer != null) {
+            cookieViewer.dismiss();
+            cookieViewer = null;
+        }
+    }
+
+    @Override
     protected void onDestroy() {
         dismissPopup();
-        if (webView != null) {
-            ViewGroup parent = (ViewGroup) webView.getParent();
-            if (parent != null) {
-                parent.removeView(webView);
-            }
-            webView.destroy();
-            webView = null;
-        }
+        destroyWebView();
         super.onDestroy();
+    }
+
+    private void destroyWebView() {
+        if (webView == null) {
+            return;
+        }
+        ViewGroup parent = (ViewGroup) webView.getParent();
+        if (parent != null) {
+            parent.removeView(webView);
+        }
+        webView.destroy();
+        webView = null;
+    }
+
+    // WebView 渲染进程崩溃时如果不在客户端接管，系统会直接杀掉整个应用进程。
+    private void onRendererGone() {
+        Log.w(TAG, "renderer process gone in slot " + slotIndex());
+        Toast.makeText(this, R.string.render_gone, Toast.LENGTH_LONG).show();
+        dismissPopup();
+        destroyWebView();
+        finish();
     }
 
     @Override
@@ -151,7 +284,7 @@ public class WebActivity extends Activity {
 
     private void dismissPopup() {
         if (popupView != null) {
-            root.removeView(popupView);
+            container.removeView(popupView);
             popupView.destroy();
             popupView = null;
             Log.i(TAG, "popup dismissed");
@@ -160,7 +293,7 @@ public class WebActivity extends Activity {
 
     private void showPopup(WebView popup) {
         popupView = popup;
-        root.addView(popup, new FrameLayout.LayoutParams(
+        container.addView(popup, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
@@ -189,6 +322,12 @@ public class WebActivity extends Activity {
         public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
             handler.cancel();
             Toast.makeText(WebActivity.this, R.string.ssl_error, Toast.LENGTH_LONG).show();
+        }
+
+        @Override
+        public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+            onRendererGone();
+            return true;
         }
     }
 
@@ -265,6 +404,12 @@ public class WebActivity extends Activity {
         public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
             handler.cancel();
             Toast.makeText(WebActivity.this, R.string.ssl_error, Toast.LENGTH_LONG).show();
+        }
+
+        @Override
+        public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+            onRendererGone();
+            return true;
         }
     }
 

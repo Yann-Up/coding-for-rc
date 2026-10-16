@@ -1,5 +1,6 @@
 package com.kimirc.shell;
 
+import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.net.Uri;
@@ -18,7 +19,7 @@ import java.util.List;
 
 public final class CookieViewer {
 
-    private final MainActivity activity;
+    private final Activity activity;
     private final LayoutInflater inflater;
     private final List<CookieEntry> entries = new ArrayList<>();
     private final LinearLayout cookieList;
@@ -30,7 +31,7 @@ public final class CookieViewer {
     private Button valuesButton;
     private boolean valuesVisible;
 
-    private CookieViewer(MainActivity activity) {
+    private CookieViewer(Activity activity, String accountName) {
         this.activity = activity;
         inflater = activity.getLayoutInflater();
         View content = inflater.inflate(R.layout.dialog_cookie_list, null);
@@ -44,7 +45,7 @@ public final class CookieViewer {
         hostView.setText(activity.getString(R.string.cookie_query_host, host));
 
         dialog = new AlertDialog.Builder(activity, R.style.Theme_KimiRC_Dialog_Alert)
-                .setTitle(R.string.cookie_title)
+                .setTitle(activity.getString(R.string.cookie_title_with_account, accountName))
                 .setView(content)
                 .setPositiveButton(R.string.cookie_show_values, null)
                 .setNeutralButton(R.string.cookie_refresh, null)
@@ -60,8 +61,8 @@ public final class CookieViewer {
         });
     }
 
-    public static CookieViewer show(MainActivity activity) {
-        CookieViewer viewer = new CookieViewer(activity);
+    public static CookieViewer show(Activity activity, String accountName) {
+        CookieViewer viewer = new CookieViewer(activity, accountName);
         viewer.showDialog();
         return viewer;
     }

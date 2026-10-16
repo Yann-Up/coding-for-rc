@@ -21,6 +21,7 @@ import android.widget.AdapterView;
 import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.TextView;
 
@@ -29,16 +30,19 @@ import java.util.List;
 
 public class MainActivity extends Activity {
 
-    private static final int REQ_CONFIRM_CREDENTIAL = 41;
     private static final int REQ_SCAN = 43;
 
     private static String pendingScanUrl;
 
     private boolean unlocked;
+    private boolean switchAuthPending;
+    private Runnable pendingAction;
     private DeviceAdapter adapter;
     private EditText urlInputField;
     private TextView deviceCountView;
-    private CookieViewer cookieViewer;
+    private TextView accountButton;
+    private AlertDialog accountDialog;
+    private AccountStore.Account activeAccount;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -58,7 +62,7 @@ public class MainActivity extends Activity {
         if (!unlocked) {
             authenticate();
         } else if (adapter != null) {
-            refreshDevices();
+            refresh();
         }
     }
 
@@ -71,9 +75,9 @@ public class MainActivity extends Activity {
     @Override
     protected void onStop() {
         super.onStop();
-        if (cookieViewer != null) {
-            cookieViewer.dismiss();
-            cookieViewer = null;
+        if (accountDialog != null) {
+            accountDialog.dismiss();
+            accountDialog = null;
         }
     }
 
@@ -86,13 +90,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQ_CONFIRM_CREDENTIAL) {
-            if (resultCode == RESULT_OK) {
-                onUnlocked();
-            } else {
-                finish();
-            }
-        } else if (requestCode == REQ_SCAN && resultCode == RESULT_OK && data != null) {
+        if (requestCode == REQ_SCAN && resultCode == RESULT_OK && data != null) {
             String text = data.getStringExtra(ScanActivity.EXTRA_RESULT);
             if (text != null) {
                 pendingScanUrl = text.trim();
@@ -102,24 +100,30 @@ public class MainActivity extends Activity {
     }
 
     private void authenticate() {
+        pendingAction = null;
+        switchAuthPending = false;
+        startAuthentication();
+    }
+
+    private void authenticateThen(Runnable action) {
+        pendingAction = action;
+        switchAuthPending = true;
+        startAuthentication();
+    }
+
+    private void startAuthentication() {
         KeyguardManager keyguard = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
-        if (Build.VERSION.SDK_INT >= 28) {
-            if (keyguard != null && keyguard.isDeviceSecure()) {
-                showBiometricPrompt();
-                return;
-            }
-        } else {
-            Intent intent = keyguard != null
-                    ? keyguard.createConfirmDeviceCredentialIntent(
-                            getString(R.string.lock_title), getString(R.string.lock_desc))
-                    : null;
-            if (intent != null) {
-                startActivityForResult(intent, REQ_CONFIRM_CREDENTIAL);
-                return;
-            }
+        if (keyguard != null && keyguard.isDeviceSecure()) {
+            showBiometricPrompt();
+            return;
         }
-        onUnlocked();
-        showNoLockscreenHint();
+        if (switchAuthPending) {
+            switchAuthPending = false;
+            runPendingAction();
+        } else {
+            onUnlocked();
+            showNoLockscreenHint();
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -138,14 +142,31 @@ public class MainActivity extends Activity {
                 new BiometricPrompt.AuthenticationCallback() {
                     @Override
                     public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) {
-                        onUnlocked();
+                        if (switchAuthPending) {
+                            switchAuthPending = false;
+                            runPendingAction();
+                        } else {
+                            onUnlocked();
+                        }
                     }
 
                     @Override
                     public void onAuthenticationError(int errorCode, CharSequence errString) {
-                        finish();
+                        switchAuthPending = false;
+                        pendingAction = null;
+                        if (!unlocked) {
+                            finish();
+                        }
                     }
                 });
+    }
+
+    private void runPendingAction() {
+        Runnable action = pendingAction;
+        pendingAction = null;
+        if (action != null) {
+            action.run();
+        }
     }
 
     private void onUnlocked() {
@@ -183,8 +204,10 @@ public class MainActivity extends Activity {
         ListView listView = findViewById(R.id.device_list);
         View emptyView = findViewById(R.id.empty_view);
         deviceCountView = findViewById(R.id.device_count);
+        accountButton = findViewById(R.id.account_button);
         Button addButton = findViewById(R.id.add_button);
 
+        activeAccount = AccountStore.active(this);
         adapter = new DeviceAdapter(this);
         listView.setEmptyView(emptyView);
         listView.setAdapter(adapter);
@@ -193,10 +216,8 @@ public class MainActivity extends Activity {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                 DeviceStore.Device device = adapter.getItem(position);
-                Intent intent = new Intent(MainActivity.this, WebActivity.class);
-                intent.putExtra(WebActivity.EXTRA_NAME, device.name);
-                intent.putExtra(WebActivity.EXTRA_URL, device.url);
-                startActivity(intent);
+                WebActivity.start(MainActivity.this, activeAccount.slot, activeAccount.name,
+                        device.name, device.url);
             }
         });
         listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
@@ -207,13 +228,10 @@ public class MainActivity extends Activity {
             }
         });
 
-        findViewById(R.id.cookie_button).setOnClickListener(new View.OnClickListener() {
+        accountButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if (cookieViewer != null) {
-                    cookieViewer.dismiss();
-                }
-                cookieViewer = CookieViewer.show(MainActivity.this);
+                showAccountDialog();
             }
         });
         addButton.setOnClickListener(new View.OnClickListener() {
@@ -222,13 +240,195 @@ public class MainActivity extends Activity {
                 showAddDialog();
             }
         });
-        refreshDevices();
+        refresh();
     }
 
-    private void refreshDevices() {
-        List<DeviceStore.Device> devices = DeviceStore.load(this);
+    private void refresh() {
+        if (activeAccount == null) {
+            activeAccount = AccountStore.active(this);
+        }
+        accountButton.setText(activeAccount.name);
+        List<DeviceStore.Device> devices = DeviceStore.load(this, activeAccount.id);
         adapter.refresh(devices);
         deviceCountView.setText(getString(R.string.device_count, devices.size()));
+    }
+
+    private void switchAccount(final AccountStore.Account account) {
+        if (account.id.equals(activeAccount.id)) {
+            return;
+        }
+        authenticateThen(new Runnable() {
+            @Override
+            public void run() {
+                AccountStore.setActive(MainActivity.this, account.id);
+                activeAccount = account;
+                refresh();
+                showAccountDialog();
+            }
+        });
+    }
+
+    private void showAccountDialog() {
+        if (accountDialog != null) {
+            accountDialog.dismiss();
+            accountDialog = null;
+        }
+        View content = getLayoutInflater().inflate(R.layout.dialog_account_list, null);
+        LinearLayout list = content.findViewById(R.id.account_list);
+        for (final AccountStore.Account account : AccountStore.load(this)) {
+            View row = getLayoutInflater().inflate(R.layout.item_account, list, false);
+            TextView nameView = row.findViewById(R.id.account_name);
+            TextView countView = row.findViewById(R.id.account_device_count);
+            TextView currentView = row.findViewById(R.id.account_current);
+            nameView.setText(account.name);
+            countView.setText(getString(R.string.device_count, DeviceStore.count(this, account.id)));
+            currentView.setVisibility(
+                    account.id.equals(activeAccount.id) ? View.VISIBLE : View.GONE);
+            row.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    switchAccount(account);
+                }
+            });
+            row.setOnLongClickListener(new View.OnLongClickListener() {
+                @Override
+                public boolean onLongClick(View v) {
+                    showAccountActions(account);
+                    return true;
+                }
+            });
+            list.addView(row);
+        }
+
+        accountDialog = new AlertDialog.Builder(this, R.style.Theme_KimiRC_Dialog_Alert)
+                .setTitle(R.string.account_switch_title)
+                .setView(content)
+                .setPositiveButton(R.string.account_add, null)
+                .setNegativeButton(R.string.cookie_close, null)
+                .create();
+        accountDialog.show();
+        accountDialog.getButton(AlertDialog.BUTTON_NEGATIVE)
+                .setTextColor(getColor(R.color.text_secondary));
+        accountDialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        showCreateAccountDialog();
+                    }
+                });
+    }
+
+    private void showAccountActions(final AccountStore.Account account) {
+        new AlertDialog.Builder(this, R.style.Theme_KimiRC_Dialog_Alert)
+                .setTitle(account.name)
+                .setItems(new CharSequence[]{
+                        getString(R.string.account_rename),
+                        getString(R.string.account_delete)},
+                        new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                if (which == 0) {
+                                    showRenameAccountDialog(account);
+                                } else {
+                                    confirmDeleteAccount(account);
+                                }
+                            }
+                        })
+                .show();
+    }
+
+    private void showCreateAccountDialog() {
+        View form = getLayoutInflater().inflate(R.layout.dialog_account_name, null);
+        final EditText nameInput = form.findViewById(R.id.account_name_input);
+        final AlertDialog dialog = new AlertDialog.Builder(this, R.style.Theme_KimiRC_Dialog_Alert)
+                .setTitle(R.string.account_add)
+                .setView(form)
+                .setPositiveButton(R.string.save, null)
+                .setNegativeButton(R.string.cancel, null)
+                .create();
+        dialog.show();
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(getColor(R.color.text_secondary));
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        String name = nameInput.getText().toString().trim();
+                        if (name.isEmpty()) {
+                            nameInput.setError(getString(R.string.account_name_required));
+                            nameInput.requestFocus();
+                            return;
+                        }
+                        AccountStore.Account created = AccountStore.create(MainActivity.this, name);
+                        if (created == null) {
+                            nameInput.setError(
+                                    getString(R.string.account_limit, WebActivity.SLOT_COUNT));
+                            nameInput.requestFocus();
+                            return;
+                        }
+                        AccountStore.setActive(MainActivity.this, created.id);
+                        activeAccount = created;
+                        refresh();
+                        dialog.dismiss();
+                        showAccountDialog();
+                    }
+                });
+    }
+
+    private void showRenameAccountDialog(final AccountStore.Account account) {
+        View form = getLayoutInflater().inflate(R.layout.dialog_account_name, null);
+        final EditText nameInput = form.findViewById(R.id.account_name_input);
+        nameInput.setText(account.name);
+        nameInput.setSelection(account.name.length());
+        final AlertDialog dialog = new AlertDialog.Builder(this, R.style.Theme_KimiRC_Dialog_Alert)
+                .setTitle(R.string.account_rename_title)
+                .setView(form)
+                .setPositiveButton(R.string.save, null)
+                .setNegativeButton(R.string.cancel, null)
+                .create();
+        dialog.show();
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(getColor(R.color.text_secondary));
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        String name = nameInput.getText().toString().trim();
+                        if (name.isEmpty()) {
+                            nameInput.setError(getString(R.string.account_name_required));
+                            nameInput.requestFocus();
+                            return;
+                        }
+                        AccountStore.rename(MainActivity.this, account.id, name);
+                        if (account.id.equals(activeAccount.id)) {
+                            activeAccount = AccountStore.byId(MainActivity.this, account.id);
+                            refresh();
+                        }
+                        dialog.dismiss();
+                        showAccountDialog();
+                    }
+                });
+    }
+
+    private void confirmDeleteAccount(final AccountStore.Account account) {
+        final AlertDialog dialog = new AlertDialog.Builder(this, R.style.Theme_KimiRC_Dialog_Alert)
+                .setTitle(R.string.account_delete)
+                .setMessage(getString(R.string.account_delete_confirm, account.name))
+                .setPositiveButton(R.string.delete, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface d, int which) {
+                        AccountStore.remove(MainActivity.this, account.id);
+                        DeviceStore.removeAll(MainActivity.this, account.id);
+                        if (account.id.equals(activeAccount.id)) {
+                            activeAccount = AccountStore.active(MainActivity.this);
+                            refresh();
+                        }
+                        showAccountDialog();
+                    }
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .create();
+        dialog.show();
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(getColor(R.color.danger));
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(getColor(R.color.text_secondary));
     }
 
     private void confirmDelete(final DeviceStore.Device device) {
@@ -239,7 +439,7 @@ public class MainActivity extends Activity {
                     @Override
                     public void onClick(DialogInterface d, int which) {
                         DeviceStore.remove(MainActivity.this, device);
-                        refreshDevices();
+                        refresh();
                     }
                 })
                 .setNegativeButton(R.string.cancel, null)
@@ -302,8 +502,9 @@ public class MainActivity extends Activity {
                             urlInput.requestFocus();
                             return;
                         }
-                        DeviceStore.add(MainActivity.this, new DeviceStore.Device(name, url));
-                        refreshDevices();
+                        DeviceStore.add(MainActivity.this,
+                                new DeviceStore.Device(activeAccount.id, name, url));
+                        refresh();
                         dialog.dismiss();
                     }
                 });

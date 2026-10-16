@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 APP_NAME="KimiRC"
 VERSION_NAME="1.1.0"
 VERSION_CODE=2
-MIN_SDK=26
+MIN_SDK=28
 TARGET_SDK=34
 
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
@@ -23,6 +23,15 @@ if [ -d "$SDK/build-tools" ]; then
 fi
 if [ -z "$BUILD_TOOLS" ]; then
     echo "error: no build-tools found under $SDK/build-tools" >&2
+    exit 1
+fi
+
+# d8 in build-tools 34.0.0 (R8 8.2.2) chokes on the empty-name MethodParameters
+# attribute that JDK 21 javac emits for inner-class constructors.
+MIN_BUILD_TOOLS="35.0.0"
+if [ "$(printf '%s\n%s\n' "$MIN_BUILD_TOOLS" "$BUILD_TOOLS" \
+        | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)" != "$BUILD_TOOLS" ]; then
+    echo "error: build-tools $MIN_BUILD_TOOLS or newer is required (found $BUILD_TOOLS)" >&2
     exit 1
 fi
 
@@ -55,6 +64,18 @@ if [ -z "$JAVAC" ]; then
     echo "error: javac (a JDK) is required on PATH" >&2
     exit 1
 fi
+
+REQUIRED_JAVA=21
+JAVAC_VERSION=$("$JAVAC" -version 2>&1 | sed -n '1s/^javac \([0-9][0-9.]*\).*/\1/p')
+case "$JAVAC_VERSION" in
+    1.*) JAVAC_MAJOR=${JAVAC_VERSION#1.}; JAVAC_MAJOR=${JAVAC_MAJOR%%.*} ;;
+    *)   JAVAC_MAJOR=${JAVAC_VERSION%%.*} ;;
+esac
+if [ -z "$JAVAC_MAJOR" ] || [ "$JAVAC_MAJOR" -lt "$REQUIRED_JAVA" ]; then
+    echo "error: JDK $REQUIRED_JAVA or newer is required to build (found: ${JAVAC_VERSION:-unknown})" >&2
+    exit 1
+fi
+
 KEYTOOL=$(command -v keytool || true)
 if [ -z "$KEYTOOL" ]; then
     KEYTOOL=$(pick "$(dirname "$JAVAC")/keytool") || { echo "error: keytool not found next to javac" >&2; exit 1; }
@@ -147,12 +168,13 @@ if [ -n "${RELEASE_STORE_FILE:-}" ]; then
     KEY_PASS="${RELEASE_KEY_PASSWORD:?RELEASE_KEY_PASSWORD is required}"
     echo "==> signing with release keystore"
 else
-    KS=build/debug.keystore
+    KS="$HOME/.android/debug.keystore"
     KS_PASS=android
     KEY_ALIAS=androiddebugkey
     KEY_PASS=android
     if [ ! -f "$KS" ]; then
         echo "==> generating debug keystore"
+        mkdir -p "$(dirname "$KS")"
         "$KEYTOOL" -genkeypair -v -keystore "$KS" \
             -storepass "$KS_PASS" -keypass "$KEY_PASS" \
             -alias "$KEY_ALIAS" -keyalg RSA -keysize 2048 -validity 10000 \
