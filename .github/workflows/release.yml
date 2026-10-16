@@ -11,6 +11,23 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Check release signing secrets
+        env:
+          KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          missing=""
+          [ -n "$KEYSTORE_B64" ] || missing="$missing RELEASE_KEYSTORE_B64"
+          [ -n "$STORE_PASSWORD" ] || missing="$missing RELEASE_STORE_PASSWORD"
+          [ -n "$KEY_ALIAS" ] || missing="$missing RELEASE_KEY_ALIAS"
+          [ -n "$KEY_PASSWORD" ] || missing="$missing RELEASE_KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::missing release signing secrets:$missing"
+            exit 1
+          fi
+
       - uses: actions/checkout@v7
 
       - uses: actions/setup-java@v6
