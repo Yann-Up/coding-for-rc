@@ -47,6 +47,7 @@ res/                                       aapt2 直接编译整个目录，新�
   layout/ values/ values-night/ values-v27/ drawable*/ mipmap-*/ raw/nickname_probe.js
 assets/logo.png                           图标与启动图源图
 tools/make-icons.py                       由 assets/logo.png 派生各密度位图
+tools/release-notes.sh                    取 README 更新记录里某个 tag 的摘要（release 工作流用）
 libs/zxing-core-3.5.3.jar                 唯一依赖，SHA-256 在 build.sh 中固定校验
 .github/workflows/build.yml               push/PR 出包
 .github/workflows/release.yml             v* 标签走 Secrets 签名并发布 Release
@@ -87,9 +88,11 @@ libs/zxing-core-3.5.3.jar                 唯一依赖，SHA-256 在 build.sh �
 - `build.sh` 顶部 `VERSION_NAME` / `VERSION_CODE`
 - `AndroidManifest.xml` 的 `android:versionName` / `android:versionCode`
 
-`VERSION_CODE` 同时被 `aapt2 link --version-code` 覆盖传入，改漏一处会出现版本不一致的包。README 的「更新记录」与产物名 `dist/KimiRC-<version>.apk` 也随版本走，发版时一并更新。
+`VERSION_CODE` 同时被 `aapt2 link --version-code` 覆盖传入，改漏一处会出现版本不一致的包。产物名 `dist/KimiRC-<version>.apk` 也随版本走。
 
-打 `v*` 标签触发 release 流程，正式签名靠四个 GitHub Secrets 注入（`RELEASE_KEYSTORE_B64` / `RELEASE_STORE_PASSWORD` / `RELEASE_KEY_ALIAS` / `RELEASE_KEY_PASSWORD`）。release 工作流会校验 base64 长度与 keystore 可读性，并在 Release 附 APK、SHA-256 与证书指纹。README 中记录的证书 SHA-256 指纹用于核对，换密钥时必须更新。
+**发版顺序**：先把版本号两处改好、在 README「更新记录」顶部补上 `- **vX.Y.Z**：...` 条目、推上 `master`，再打 `v*` 标签推送。release 工作流第一步跑 `tools/release-notes.sh <tag>`，它要求该条目存在、且标签与 `build.sh` 的 `VERSION_NAME` 一致，不满足就在构建前失败——宁可失败，也不要把版本号对不上的包、或没有说明的 Release 发出去。正式签名靠四个 GitHub Secrets 注入（`RELEASE_KEYSTORE_B64` / `RELEASE_STORE_PASSWORD` / `RELEASE_KEY_ALIAS` / `RELEASE_KEY_PASSWORD`），工作流会校验 base64 长度与 keystore 可读性。Release 正文 = 免责声明 + 该条目 + APK 的 SHA-256 与证书指纹；README 中记录的证书 SHA-256 指纹用于核对，换密钥时必须更新。
+
+注意**标签事件用的是被 tag 的那个提交里的工作流与脚本**：改 `release.yml` 或 `tools/release-notes.sh` 本身，要先合进 `master` 再打标签才会生效。
 
 ### 图标
 

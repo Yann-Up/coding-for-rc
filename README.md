@@ -64,7 +64,7 @@ python tools/make-icons.py
 
 ## 发布
 
-打 `v*` 标签即触发 release 工作流：用 Secrets 中的正式密钥签名，创建 GitHub Release 并附 APK、文件 SHA-256 与证书指纹。仓库需配置以下 Secrets：
+打 `v*` 标签即触发 release 工作流：用 Secrets 中的正式密钥签名，创建 GitHub Release 并附 APK、文件 SHA-256、证书指纹与更新摘要。Release 正文里的更新摘要取自本文件「更新记录」中与标签同名的那条，因此**打标签前必须先在 README 补上 `- **vX.Y.Z**：...` 条目**；工作流会先用 `tools/release-notes.sh` 检查该条目存在、且标签与 `build.sh` 的 `VERSION_NAME` 一致，任一不满足都在构建前直接失败。仓库需配置以下 Secrets：
 
 | Secret | 内容 |
 |---|---|
