@@ -58,11 +58,18 @@ public final class PrivacyStore {
     }
 
     // 弹窗是独立窗口，Activity 上的标志不会带过去，所以这些窗口要单独套用一次。
+    // 已经是对的状态就别再动窗口：addFlags/clearFlags 每次都会触发一次 relayout。
     public static void applyScreenshotPolicy(Window window, Context context) {
-        if (allowScreenshots(context)) {
-            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
-        } else {
+        boolean protect = !allowScreenshots(context);
+        boolean hasFlag =
+                (window.getAttributes().flags & WindowManager.LayoutParams.FLAG_SECURE) != 0;
+        if (protect == hasFlag) {
+            return;
+        }
+        if (protect) {
             window.addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
         }
     }
 
