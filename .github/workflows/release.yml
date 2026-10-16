@@ -44,7 +44,24 @@ jobs:
         run: echo "$ANDROID_HOME/build-tools/35.0.0" >> "$GITHUB_PATH"
 
       - name: Decode release keystore
-        run: echo "${{ secrets.RELEASE_KEYSTORE_B64 }}" | base64 -d > release.keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+        run: |
+          raw_len=${#KEYSTORE_B64}
+          clean=$(printf '%s' "$KEYSTORE_B64" | sed 's/^RELEASE_KEYSTORE_B64=//' | tr -d ' \t\r\n"')
+          bad=$(printf '%s' "$clean" | LC_ALL=C grep -o '[^A-Za-z0-9+/=]' | LC_ALL=C tr -d '\n' \
+            | LC_ALL=C sed 's/[^ -~]/?/g' | cut -c1-40 || true)
+          if [ -n "$bad" ]; then
+            echo "::error::RELEASE_KEYSTORE_B64 contains characters outside base64 (${bad}); paste only the single-line base64 body, with no NAME= prefix, quotes or newlines"
+            exit 1
+          fi
+          printf '%s' "$clean" | base64 -d > release.keystore
+          if ! keytool -list -keystore release.keystore -storepass "$STORE_PASSWORD" >/dev/null 2>&1; then
+            echo "::error::decoded file is not a readable keystore; check RELEASE_KEYSTORE_B64 and RELEASE_STORE_PASSWORD"
+            exit 1
+          fi
+          echo "keystore ok: ${raw_len} chars received, $(stat -c %s release.keystore) bytes decoded"
 
       - name: Build signed APK
         env:
