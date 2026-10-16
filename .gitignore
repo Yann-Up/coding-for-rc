@@ -1,6 +1,7 @@
 build/
 dist/
 *.keystore
+release-secrets.txt
 .DS_Store
 .idea/
 *.iml
