@@ -24,16 +24,25 @@ public class InstallResultReceiver extends BroadcastReceiver {
         if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
             // 大多数机型会自己弹出确认框，少数不会，这里补一次。
             Intent confirm = intent.getParcelableExtra(Intent.EXTRA_INTENT);
-            if (confirm != null) {
-                confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                try {
-                    context.startActivity(confirm);
-                } catch (RuntimeException ignored) {
-                }
+            if (confirm == null) {
+                // 拿不到确认页就无法继续安装，不能静默留给用户一个悬着的状态。
+                toast(context, R.string.update_install_no_confirm);
+                return;
+            }
+            confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                context.startActivity(confirm);
+            } catch (RuntimeException e) {
+                // 少数机型不允许从广播直接拉起安装确认页，同样要告知用户。
+                toast(context, R.string.update_install_no_confirm);
             }
             return;
         }
-        Toast.makeText(context, context.getString(messageFor(status)), Toast.LENGTH_LONG).show();
+        toast(context, messageFor(status));
+    }
+
+    private static void toast(Context context, int resId) {
+        Toast.makeText(context, context.getString(resId), Toast.LENGTH_LONG).show();
     }
 
     private static int messageFor(int status) {
@@ -49,8 +58,8 @@ public class InstallResultReceiver extends BroadcastReceiver {
             case PackageInstaller.STATUS_FAILURE_STORAGE:
                 return R.string.update_install_storage;
             case PackageInstaller.STATUS_FAILURE_INCOMPATIBLE:
-                // 签名不一致（例如本机装的是 debug 包）就会落到这里。
-                return R.string.update_sign_mismatch;
+                // 该状态表示 SDK 版本、ABI 或设备能力不兼容；签名不符由应用内校验负责提示，这里不重复。
+                return R.string.update_install_incompatible;
             default:
                 return R.string.update_install_failed;
         }

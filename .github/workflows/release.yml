@@ -97,11 +97,23 @@ jobs:
           SHA256: ${{ steps.meta.outputs.sha256 }}
           CERT: ${{ steps.meta.outputs.cert }}
         run: |
+          VERSION_CODE=$(tr -d '\r' < build.sh | awk -F'=' '/^VERSION_CODE=/ { print $2; exit }' | tr -d ' ')
+          if [ -z "$VERSION_CODE" ]; then
+            echo "::error::VERSION_CODE not found in build.sh; refusing to publish a release body the client cannot parse"
+            exit 1
+          fi
+          case "$VERSION_CODE" in
+            *[!0-9]*)
+              echo "::error::VERSION_CODE in build.sh is not a plain number: $VERSION_CODE"
+              exit 1
+              ;;
+          esac
           {
             echo "非官方社区构建，仅供自用与学习，与 Moonshot AI 无关。"
             echo
             cat changelog.md
             echo
+            echo "- 版本代码: $VERSION_CODE"
             echo "- 文件 SHA-256: \`$SHA256\`"
             echo "- $CERT"
           } > release-notes.md

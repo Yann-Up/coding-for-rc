@@ -44,7 +44,7 @@ src/com/kimirc/shell/                      全部 Java 源码，包名 com.kimir
   PrivacyStore.java                        截屏保护开关，跨进程用文件存
   SecureAlertDialog.java                   弹窗窗口补 FLAG_SECURE 的 Builder
   ThemeStore.java / ThemedActivity.java    明暗模式覆盖，跨进程用文件存
-  UpdateChecker.java                       读双源版本元数据、比对版本、算 SHA-256；维护请求白名单与手动跳转跟随
+  UpdateChecker.java                       读双源版本元数据、解析并规范化摘要、比对版本、两源交叉核对；维护请求白名单与手动跳转跟随
   UpdateStore.java                         自动检查开关、上次检查时间、被忽略版本（主进程 SharedPreferences）
   UpdateInstaller.java                     下载、校验 SHA-256 与签名，交给系统 PackageInstaller 安装
   InstallResultReceiver.java               接收系统回投的安装结果广播（不导出）
@@ -58,7 +58,7 @@ tools/release-notes.sh                    取 README 更新记录里某个 tag �
 libs/zxing-core-3.5.3.jar                 唯一依赖，SHA-256 在 build.sh 中固定校验
 .github/workflows/build.yml               push/PR 出包
 .github/workflows/release.yml             v* 标签走 Secrets 签名并发布 Release
-.github/workflows/sync-cnb.yml            Release 后实测 APK SHA-256，推送 tag 与 updater/latest.json 到 CNB
+.github/workflows/sync-cnb.yml            v* 标签触发，等 Release 附件就绪后实测 APK SHA-256，推送 tag 与 updater/latest.json 到 CNB
 ```
 
 ## 语言与风格
@@ -87,7 +87,7 @@ libs/zxing-core-3.5.3.jar                 唯一依赖，SHA-256 在 build.sh �
 - Cookie 只在用户主动打开「登录状态」面板时读取用于显示，默认掩码、不落盘、不进日志/Intent/Bundle；面板必须运行在账号自己的进程里。
 - 截屏保护：`ThemedActivity.onCreate` 按 `PrivacyStore` 决定是否加 `FLAG_SECURE`（默认加，用户可在「设置」页关掉）。**不要在子类里自己加 `FLAG_SECURE`**——加在了本地，用户关掉开关也清不掉。弹窗是独立窗口、Activity 的标志带不过去，所以设置类弹窗统一用 `SecureAlertDialog.Builder`（在 `create()` 里补标志）。`LoginStateViewer` 显示凭证，无论开关如何都强制加。`allowBackup="false"`（防书签被系统备份上云）不得改动。
 - 应用锁是「手机丢失 → 设备被接管」的核心防线，切换账号需二次验证。改动 `MainActivity` 的解锁状态机（`unlocked` / `onUserLeaveHint` / `internalNavigation`）时格外小心。
-- 更新校验：签名证书是信任锚，SHA-256 只负责传输完整性。更新源的域名白名单不得放宽，仅限 `cnb.cool` 及其子域、`api.github.com`、`github.com`、`release-assets.githubusercontent.com`、`objects.githubusercontent.com`；跳转每一跳都要重新校验，不得覆盖任何 TLS 校验。SHA-256 或签名校验失败一律不安装，不得增加「跳过校验」开关；`CNB_TOKEN` 只给 CI，不得进客户端；不得为更新流程引入任何依赖，只用 `android.jar` 里的 `HttpURLConnection` + `org.json` + `MessageDigest`。
+- 更新校验：签名证书是信任锚，SHA-256 只负责传输完整性。更新源的域名白名单不得放宽，只允许这些主机**及其子域**：`cnb.cool`、`api.github.com`、`github.com`、`release-assets.githubusercontent.com`、`objects.githubusercontent.com`（`UpdateChecker.isAllowedHost` 对每个白名单条目都放行 `host.equals(条目)` 与 `host.endsWith("." + 条目)`，没有精确匹配例外）；跳转每一跳都要重新校验，不得覆盖任何 TLS 校验。SHA-256 或签名校验失败一律不安装，不得增加「跳过校验」开关；`CNB_TOKEN` 只给 CI，不得进客户端；不得为更新流程引入任何依赖，只用 `android.jar` 里的 `HttpURLConnection` + `org.json` + `MessageDigest`。
 - 密码学材料不入库：`release.keystore`、`release-secrets.txt`、`release-keystore.b64` 已在 `.gitignore`，不要提交、不要打印其内容；日常与 CI 构建用固定路径的 `~/.android/debug.keystore`。
 
 ## 版本号与发布
@@ -101,17 +101,17 @@ libs/zxing-core-3.5.3.jar                 唯一依赖，SHA-256 在 build.sh �
 
 **发版顺序**：先把版本号两处改好、在 README「更新记录」顶部补上 `- **vX.Y.Z**：...` 条目、推上 `master`，再打 `v*` 标签推送。release 工作流第一步跑 `tools/release-notes.sh <tag>`，它要求该条目存在、且标签与 `build.sh` 的 `VERSION_NAME` 一致，不满足就在构建前失败——宁可失败，也不要把版本号对不上的包、或没有说明的 Release 发出去。正式签名靠四个 GitHub Secrets 注入（`RELEASE_KEYSTORE_B64` / `RELEASE_STORE_PASSWORD` / `RELEASE_KEY_ALIAS` / `RELEASE_KEY_PASSWORD`），工作流会校验 base64 长度与 keystore 可读性。Release 正文 = 免责声明 + 该条目 + APK 的 SHA-256 与证书指纹；README 中记录的证书 SHA-256 指纹用于核对，换密钥时必须更新。
 
-Release 发布后进入 CNB 同步：`.github/workflows/sync-cnb.yml` 由 `release: published` 或手动指定 tag 触发，下载本 Release 的 APK 对字节实测 SHA-256（不从正文抓字符串），生成 CNB 版清单 `latest.json`，把该 tag 推到 CNB 仓，并将清单提交到只含 `latest.json` 的 `updater` 分支。被 tag 的提交没有 `.cnb.yml` 时，工作流直接失败，避免发出指向死链的清单。除了 `release.yml` 使用的四个签名 Secrets，同步还需要 GitHub Secret `CNB_TOKEN`（CNB 访问令牌，含 `repo-contents` 读写，Git 推送用户名固定 `cnb`），只供 CI 使用，不得进入客户端。
+Release 发布后进入 CNB 同步：`.github/workflows/sync-cnb.yml` 由 `push` 的 `v*` 标签（或手动指定 tag）触发，**不用** `release: published`——`release.yml` 用 Actions 自带的 `GITHUB_TOKEN` 创建 Release，而 GitHub 规定由 `GITHUB_TOKEN` 触发的事件不会再触发新的 workflow 运行，那条触发对自动流程从未生效过（v0.1.6 就漏过一次）。因为改成 tag push，本工作流与 `release.yml` 同时起跑，所以下载 APK 前会带时限地等待该 Release 的 APK 附件出现（超时即失败，不带着拿不到的包继续）。之后下载本 Release 的 APK 对字节实测 SHA-256（不从正文抓字符串），生成 CNB 版清单 `latest.json`，把该 tag 推到 CNB 仓，并将清单提交到只含 `latest.json` 的 `updater` 分支。被 tag 的提交没有 `.cnb.yml` 时，工作流直接失败，避免发出指向死链的清单。除了 `release.yml` 使用的四个签名 Secrets，同步还需要 GitHub Secret `CNB_TOKEN`（CNB 访问令牌，含 `repo-contents` 读写，Git 推送用户名固定 `cnb`），只供 CI 使用，不得进入客户端。推 tag 之后、提交清单之前，工作流会先实测清单要指向的那条 CNB 附件直链（下载整包比对 SHA-256，最多等 8 分钟），到时限仍拿不到或对不上只发 `::warning::` 而**不失败**——客户端拿不到 CNB 会回退 GitHub，在这里硬失败反而会让 CNB 侧连清单都没有。写入 `updater` 分支时清单**只允许升不允许降**：分支上已有清单的 `versionCode` 大于本次版本就直接报错退出，避免用手动补同步旧 tag 把清单回滚到更旧的版本（现有清单缺失或读不出 `versionCode` 时跳过这道守卫）。
 
 仓库根目录的 `.cnb.yml` 是 CNB 侧流水线：`tag_push` 触发后用内置任务 `git:release` 创建同名 Release，再把 APK 从 GitHub Release 拉到 CNB 挂成 Release 附件。
 
-注意**标签事件用的是被 tag 的那个提交里的工作流与脚本**：改 `release.yml` 或 `tools/release-notes.sh` 本身，要先合进 `master` 再打标签才会生效。CNB 的 `tag_push` 也读取被 tag 提交中的 `.cnb.yml`，因此改 `.cnb.yml` 同样必须先合 `master` 再打新标签；`sync-cnb.yml` 则使用默认分支版本，改它不需要重新打标签。
+注意**标签事件用的是被 tag 的那个提交里的工作流与脚本**：改 `release.yml`、`tools/release-notes.sh`、`sync-cnb.yml` 或 CNB 侧的 `.cnb.yml` 本身，都要先合进 `master` 再打标签才会生效；`sync-cnb.yml` 已从 `release: published` 改成 tag push 触发，因此和 `.cnb.yml` 是同一条纪律——对已推过的旧 tag 重跑，用的仍是当时那份配置。
 
 已知的待验证项与风险：
 
-- CNB 构建节点能否出网访问 github.com 未验证，拉不到 APK 会导致同步失败。
-- 清单发布与 CNB 附件上传完成之间有几分钟窗口，期间 CNB 直链会短暂 404；客户端会自动回退 GitHub，不影响使用。
-- CNB 仓目前是空仓，首次同步后只有 tag 与 `updater` 分支，没有默认分支。
+- CNB 构建节点出网访问 github.com 已经实测可用：v0.1.6 首次同步时 APK 成功从 GitHub 拉到 CNB 并挂成附件。
+- CNB 仓当前含有 `v0.1.6` 的 Release（附件里有 `KimiRC-0.1.6.apk`）、该 tag，以及只放 `latest.json` 的 `updater` 分支；CNB 把 `HEAD` 指向了 `updater`，因此该仓没有源码分支（`sync-cnb.yml` 里重置该分支用的是 `git checkout -B`，就是因为克隆时本地已经存在同名分支）。
+- `.cnb.yml` 的 `git:release` 设了 `overlying: true`（叠加模式，重跑时不先删旧 Release）。官方文档只把它描述为「仅编辑/更新」，而任务本身的定位是「生成或更新」、且那句「先删后建」的警告限定在「Release 已存在时」，所以「Release 尚不存在时 true 是否仍会创建」没有明文——需要在下一次打 tag 时确认首个 Release 能否正常建出；万一没建出来，删掉那一行即可恢复。
 - 客户端在 CNB raw 通道失效时会尝试第二种 CNB 形态（固定 tag 的 Release 附件），但 CI 目前还没有发布那一份；这只是 raw 通道万一变动时的兜底预留。
 
 ### 图标

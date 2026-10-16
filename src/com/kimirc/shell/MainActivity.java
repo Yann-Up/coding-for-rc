@@ -76,6 +76,11 @@ public class MainActivity extends ThemedActivity {
             // 解锁状态下回到前台顺手看一眼有没有新版本（开关与 24 小时间隔都在内部判断）。
             updatePrompt.checkSilently();
         }
+        // 刚从系统设置里授权过「安装未知应用」回来，接着把更新装完（待装版本存在 UpdatePrompt 里）。
+        // 门禁：只有通过应用锁之后才转发，否则用户切后台回来、指纹还没过就会开始下载安装。
+        if (unlocked) {
+            updatePrompt.onResume();
+        }
     }
 
     @Override
@@ -239,6 +244,9 @@ public class MainActivity extends ThemedActivity {
         }
         // 检查更新是解锁之后才做的事：应用锁是核心防线，未解锁不做任何后台动作。
         updatePrompt.checkSilently();
+        // 去系统设置里授权「安装未知应用」会让主页走 onUserLeaveHint 重新锁上，回到前台时
+        // onResume 里 unlocked 还是 false；这里补一次转发，解锁后才接得上刚才那次下载安装。
+        updatePrompt.onResume();
     }
 
     private void showNoLockscreenHint() {

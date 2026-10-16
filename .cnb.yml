@@ -23,6 +23,11 @@
         - name: 创建 CNB Release
           type: git:release
           options:
+            # overlying 默认 false，含义是「Release 已存在时先删再建」（CNB 内置任务文档已明示）。
+            # 重跑同一个 tag 的流水线时，这会把上一轮已有的 Release 连同 APK 附件一起删掉；
+            # 若随后的下载或上传失败，原本可用的发布就变成只有源码包的空 Release，直链失效。
+            # true 是叠加模式：仅编辑/更新 Release，不先删除，重跑不会破坏已发布的附件。
+            overlying: true
             # tag_push 事件不用传 tag（直接取触发事件的 tag），title 默认也取 tag 名，即同名 Release
             description: 非官方社区构建，仅供自用与学习，与 Moonshot AI 无关。完整说明见 [GitHub Release](https://github.com/Yann-Up/coding-for-rc/releases/tag/${CNB_BRANCH})
         - name: 从 GitHub Release 下载 APK
@@ -50,5 +55,7 @@
               - "./dist/*.apk"
           exports:
             FILES: ATTACHMENT_FILES
-        - name: 输出附件地址
-          script: echo "attached ${ATTACHMENT_FILES}"
+        # cnbcool/attachments 导出的 FILES 是「已上传文件的相对路径」，不是可直接访问的附件 URL，
+        # 步骤名与日志都按这个含义写，避免误以为拿到了直链。
+        - name: 输出已上传附件的相对路径
+          script: echo "uploaded attachments (relative paths) ${ATTACHMENT_FILES}"

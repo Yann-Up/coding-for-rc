@@ -146,6 +146,9 @@ final class UpdateChecker {
     }
 
     // 是否比本机新。版本号（versionCode）权威，缺失时退回按版本名逐段比数值。
+    // 两个解析器都要求版本名是「数字与点」的形状，远端那一侧因此总能解析出来；
+    // 这条兜底分支现在通常只在 versionCode 缺失（如没有「版本代码」行的旧 Release）
+    // 而本机版本名又不可解析时才生效，保留它只为不改变旧行为。
     // 两边都比不出来就当作没有更新：宁可漏报一次，也不要凭不可解析的版本名提示升级。
     static boolean isNewer(Context context, Info info) {
         if (info == null) {
@@ -276,6 +279,11 @@ final class UpdateChecker {
                 byte[] chunk = new byte[4096];
                 int read;
                 while ((read = in.read(chunk)) != -1) {
+                    // 元数据本身只有几 KB（512 KiB 是个很宽的上限）：挡住「失控或被顶替的源把整个响应
+                    // 灌进内存」，宁可当作解析失败换下一个源。
+                    if (buffer.size() + read > 512 * 1024) {
+                        throw new Failure(ERR_PARSE);
+                    }
                     buffer.write(chunk, 0, read);
                 }
                 return new String(buffer.toByteArray(), StandardCharsets.UTF_8);
@@ -305,11 +313,10 @@ final class UpdateChecker {
         info.source = SOURCE_CNB;
         info.versionName = text(root, "version");
         info.versionCode = root.optInt("versionCode", 0);
-        info.notes = text(root, "notes");
-        info.pageUrl = text(root, "cnb");
-        if (info.pageUrl.isEmpty()) {
-            info.pageUrl = CNB_RELEASES_PAGE;
-        }
+        info.notes = notesText(text(root, "notes"));
+        // 发布页只有固定两个，用本类常量拼，不采信清单里的页面地址：
+        // 那个值会被「打开发布页面」按钮使用，若被篡改可以指向白名单内的钓鱼地址。
+        info.pageUrl = CNB_RELEASES_PAGE;
         JSONObject android = root.optJSONObject("android");
         if (android != null) {
             info.apkUrl = text(android, "url");
@@ -317,7 +324,7 @@ final class UpdateChecker {
             info.sha256 = normalizeHex(text(android, "sha256"));
             info.certSha256 = normalizeHex(text(android, "certSha256"));
         }
-        if (info.versionName.isEmpty()) {
+        if (!isValidVersionName(info.versionName)) {
             throw new Failure(ERR_PARSE);
         }
         if (info.apkUrl.isEmpty()) {
@@ -337,15 +344,16 @@ final class UpdateChecker {
         }
         String tag = text(root, "tag_name");
         String versionName = tag.startsWith("v") ? tag.substring(1) : tag;
-        if (versionName.isEmpty()) {
+        if (!isValidVersionName(versionName)) {
             throw new Failure(ERR_PARSE);
         }
         String notes = text(root, "body");
         Info info = new Info();
         info.source = SOURCE_GITHUB;
         info.versionName = versionName;
-        info.versionCode = 0;
-        info.notes = changelogLine(notes);
+        // release.yml 的正文里带一行「- 版本代码: <数字>」，读不到就保持 0、退回按版本名比较。
+        info.versionCode = versionCodeLine(notes);
+        info.notes = notesText(notes);
         info.pageUrl = GITHUB_RELEASES_PAGE + "/tag/" + tag;
         info.apkName = apkName(versionName);
         info.sha256 = normalizeHex(lineSha256(notes, "文件 SHA-256"));
@@ -391,6 +399,73 @@ final class UpdateChecker {
             }
         }
         return "";
+    }
+
+    // 两个来源的更新摘要统一走这里：优先用 changelogLine 清理过的（去掉 "- " 与 "**"），
+    // 清理不到就回退到原文（去掉首尾空白），保证 CNB 与 GitHub 两条路径的展示一致。
+    private static String notesText(String body) {
+        if (body == null) {
+            return "";
+        }
+        String cleaned = changelogLine(body);
+        return cleaned.isEmpty() ? body.trim() : cleaned;
+    }
+
+    // release.yml 在 Release 正文里写的一行「- 版本代码: <数字>」。
+    // 读不到、或那一行没有数字，都返回 0（不因此判为解析失败），上层会退回按版本名比较。
+    private static int versionCodeLine(String body) {
+        if (body == null) {
+            return 0;
+        }
+        String[] lines = body.replace("\r", "").split("\n");
+        for (String line : lines) {
+            if (!line.contains("版本代码")) {
+                continue;
+            }
+            String digits = firstDigits(line);
+            if (digits.isEmpty()) {
+                continue;
+            }
+            try {
+                long code = Long.parseLong(digits);
+                if (code > 0 && code <= Integer.MAX_VALUE) {
+                    return (int) code;
+                }
+            } catch (NumberFormatException e) {
+                // 位数过多溢出：当作这一行没有版本代码，继续往下找。
+            }
+        }
+        return 0;
+    }
+
+    // 取第一段连续数字，找不到返回空串。
+    private static String firstDigits(String text) {
+        StringBuilder current = new StringBuilder();
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c >= '0' && c <= '9') {
+                current.append(c);
+            } else if (current.length() > 0) {
+                break;
+            }
+        }
+        return current.toString();
+    }
+
+    // 版本名会被拿去拼下载地址（apkName / cnbApkUrl / githubApkUrl），只接受「数字与点」的形状
+    // （如 0.1.6）。主机名本来受白名单约束、最终还有哈希与签名兜底，但没必要让带路径片段的
+    // 输入进入 URL 拼接。
+    private static boolean isValidVersionName(String name) {
+        if (name == null || name.isEmpty()) {
+            return false;
+        }
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (c != '.' && (c < '0' || c > '9')) {
+                return false;
+            }
+        }
+        return true;
     }
 
     // 正文里有两处 SHA-256（文件与签名证书），必须认准 marker 那一行再取值。

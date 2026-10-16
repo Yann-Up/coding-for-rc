@@ -38,6 +38,15 @@ final class UpdateInstaller {
     private static final int BUFFER_SIZE = 64 * 1024;
     private static final long PROGRESS_STEP = 64 * 1024;
 
+    // download() 的返回状态：把「这个源根本没下成」与「整包下完了但大小/摘要对不上」分开，
+    // 后者要一路报到 ERR_HASH，不能让用户只看到一句含糊的「下载失败」。
+    private static final int SOURCE_FAILED = 0;
+    private static final int SOURCE_OK = 1;
+    private static final int SOURCE_MISMATCH = 2;
+
+    // commit() 的内部信号：校验通过后、会话提交前用户点了取消。不对外暴露，install() 见到它静默收尾。
+    private static final int COMMIT_CANCELLED = -1;
+
     interface Listener {
         void onProgress(long downloaded, long total);
 
@@ -79,14 +88,21 @@ final class UpdateInstaller {
 
         File apk = new File(updateDir(), info.apkName);
         boolean downloaded = false;
+        // 只要有一个源把整包下完却对不上，就记下来：这跟「所有源都下不下来」不是一回事，
+        // 前者说明包被动过或传输坏了，要报校验失败，不能含糊成「下载失败」。
+        boolean mismatch = false;
         String[] urls = info.downloadUrls();
         for (int i = 0; i < urls.length && !cancelled; i++) {
             if (urls[i] == null || urls[i].isEmpty()) {
                 continue;
             }
-            if (download(urls[i], apk, info, listener)) {
+            int status = download(urls[i], apk, info, listener);
+            if (status == SOURCE_OK) {
                 downloaded = true;
                 break;
+            }
+            if (status == SOURCE_MISMATCH) {
+                mismatch = true;
             }
         }
         if (cancelled) {
@@ -95,7 +111,7 @@ final class UpdateInstaller {
         }
         if (!downloaded) {
             apk.delete();
-            listener.onError(ERR_DOWNLOAD);
+            listener.onError(mismatch ? ERR_HASH : ERR_DOWNLOAD);
             return;
         }
 
@@ -112,6 +128,10 @@ final class UpdateInstaller {
         // 先交给系统，成了再报「已交给系统安装」：反过来的话，提交失败时用户已经先听到一句乐观的话。
         int error = commit(apk);
         apk.delete();
+        if (error == COMMIT_CANCELLED) {
+            // 用户在收尾阶段点了取消：会话已 abandon，什么都别提交，也不要弹错误——只当这次更新没发生过。
+            return;
+        }
         if (error != OK) {
             listener.onError(error);
             return;
@@ -120,7 +140,8 @@ final class UpdateInstaller {
     }
 
     // 边下边算 SHA-256，文件长度与摘要都要对上才算这个源可用；对不上就清掉换下一个源。
-    private boolean download(String url, File target, UpdateChecker.Info info, Listener listener) {
+    // 返回 SOURCE_*：调用方要靠它区分「源不可用」与「下完了但校验不符」，后者要报 ERR_HASH。
+    private int download(String url, File target, UpdateChecker.Info info, Listener listener) {
         FileOutputStream fileOut = null;
         HttpURLConnection conn = null;
         try {
@@ -131,13 +152,19 @@ final class UpdateInstaller {
             fileOut = new FileOutputStream(target);
             long downloaded = 0L;
             long lastReported = 0L;
+            // 清单里给了大小就以它为准（再放宽 1 MiB 容忍差异），拿不到则用一个宽松的硬上限。
+            // 这挡的是「失控或被顶替的源把缓存目录写到爆满」——正常包约 1 MiB。
+            long sizeLimit = info.size > 0 ? info.size + (1L << 20) : 64L * 1024 * 1024;
             listener.onProgress(0L, total);
             try (InputStream in = conn.getInputStream()) {
                 byte[] buffer = new byte[BUFFER_SIZE];
                 int read;
                 while ((read = in.read(buffer)) != -1) {
                     if (cancelled) {
-                        return false;
+                        return SOURCE_FAILED;
+                    }
+                    if (downloaded + read > sizeLimit) {
+                        return SOURCE_FAILED;
                     }
                     fileOut.write(buffer, 0, read);
                     digest.update(buffer, 0, read);
@@ -152,20 +179,22 @@ final class UpdateInstaller {
             fileOut.close();
             fileOut = null;
 
+            // 整包都读完了，只是长度或摘要对不上：本源的数据坏了/被换过，报 SOURCE_MISMATCH，
+            // 让 install() 能一路报到 ERR_HASH，而不是混进「下载失败」。
             if (info.size > 0 && downloaded != info.size) {
-                return false;
+                return SOURCE_MISMATCH;
             }
             if (!info.sha256.isEmpty() && !info.sha256.equals(hex(digest.digest()))) {
-                return false;
+                return SOURCE_MISMATCH;
             }
-            return true;
+            return SOURCE_OK;
         } catch (IOException e) {
-            return false;
+            return SOURCE_FAILED;
         } catch (UpdateChecker.Failure e) {
             // 这个源不可用（404、限流、跳转跑到白名单外…），当作本源失败，换下一个源。
-            return false;
+            return SOURCE_FAILED;
         } catch (NoSuchAlgorithmException e) {
-            return false;
+            return SOURCE_FAILED;
         } finally {
             activeConnection = null;
             if (fileOut != null) {
@@ -183,23 +212,34 @@ final class UpdateInstaller {
         }
     }
 
-    // 签名比对：下载包的签名证书必须与当前安装的包完全一致。
+    // 签名比对：下载包的**整组**签名证书必须与当前安装的包完全一致。
     // 这一步挡的是「有人换掉了服务器上的包」，因为私有密钥拿不到。
+    // 多签名包的身份是完整的签名集合，只比第一张会给多签名包留出漏网的空子。
     private boolean verifySignature(File apk) {
-        byte[] remote = signerCert(apk.getAbsolutePath(), true);
-        byte[] local = signerCert(context.getPackageName(), false);
+        byte[][] remote = signerCerts(apk.getAbsolutePath(), true);
+        byte[][] local = signerCerts(context.getPackageName(), false);
         if (remote == null || local == null) {
             return false;
         }
-        byte[] remoteHash = sha256(remote);
-        // 摘要算法拿不到时 sha256() 返回空数组，两个空数组相等会造成误判，这里先挡掉。
-        if (remoteHash.length == 0) {
+        byte[][] remoteDigests = sortedDigests(remote);
+        byte[][] localDigests = sortedDigests(local);
+        // 摘要算法拿不到时 sortedDigests() 返回 null，绝不能当成「一致」。
+        if (remoteDigests == null || localDigests == null) {
             return false;
         }
-        return MessageDigest.isEqual(remoteHash, sha256(local));
+        // 张数不同就是不同的签名集合，直接判不一致。
+        if (remoteDigests.length != localDigests.length) {
+            return false;
+        }
+        for (int i = 0; i < remoteDigests.length; i++) {
+            if (!MessageDigest.isEqual(remoteDigests[i], localDigests[i])) {
+                return false;
+            }
+        }
+        return true;
     }
 
-    private byte[] signerCert(String pathOrPackage, boolean fromArchive) {
+    private byte[][] signerCerts(String pathOrPackage, boolean fromArchive) {
         PackageManager manager = context.getPackageManager();
         try {
             PackageInfo info = fromArchive
@@ -214,23 +254,67 @@ final class UpdateInstaller {
             if (signers == null || signers.length == 0) {
                 return null;
             }
-            return signers[0].toByteArray();
+            byte[][] certs = new byte[signers.length][];
+            for (int i = 0; i < signers.length; i++) {
+                if (signers[i] == null) {
+                    return null;
+                }
+                certs[i] = signers[i].toByteArray();
+            }
+            return certs;
         } catch (PackageManager.NameNotFoundException e) {
             return null;
         }
+    }
+
+    // 每张证书各自取 SHA-256 摘要，再按字节序排序：集合身份与顺序无关，排好序才能逐个比对。
+    private static byte[][] sortedDigests(byte[][] certs) {
+        byte[][] digests = new byte[certs.length][];
+        for (int i = 0; i < certs.length; i++) {
+            byte[] digest = sha256(certs[i]);
+            // 摘要算法拿不到时 sha256() 返回空数组，两个空数组相等会造成误判，这里先挡掉。
+            if (digest.length == 0) {
+                return null;
+            }
+            digests[i] = digest;
+        }
+        for (int i = 1; i < digests.length; i++) {
+            byte[] key = digests[i];
+            int j = i - 1;
+            while (j >= 0 && compareBytes(digests[j], key) > 0) {
+                digests[j + 1] = digests[j];
+                j--;
+            }
+            digests[j + 1] = key;
+        }
+        return digests;
+    }
+
+    private static int compareBytes(byte[] left, byte[] right) {
+        int length = Math.min(left.length, right.length);
+        for (int i = 0; i < length; i++) {
+            int a = left[i] & 0xff;
+            int b = right[i] & 0xff;
+            if (a != b) {
+                return a - b;
+            }
+        }
+        return left.length - right.length;
     }
 
     private int commit(File apk) {
         PackageManager manager = context.getPackageManager();
         PackageInstaller installer = manager.getPackageInstaller();
         PackageInstaller.Session session = null;
+        int sessionId = -1;
+        boolean committed = false;
         try {
             PackageInstaller.SessionParams params =
                     new PackageInstaller.SessionParams(
                             PackageInstaller.SessionParams.MODE_FULL_INSTALL);
             params.setAppPackageName(context.getPackageName());
             params.setSize(apk.length());
-            int sessionId = installer.createSession(params);
+            sessionId = installer.createSession(params);
             session = installer.openSession(sessionId);
             try (InputStream in = new FileInputStream(apk);
                  OutputStream out = session.openWrite("base.apk", 0, apk.length())) {
@@ -241,7 +325,13 @@ final class UpdateInstaller {
                 }
                 session.fsync(out);
             }
+            // 校验通过之后、真正提交之前用户还可能点取消：这里最后确认一次。
+            // 取消是尽力而为，但「绝不提交用户没点头的安装」是硬要求，所以宁可白写一遍 staging。
+            if (cancelled) {
+                return COMMIT_CANCELLED;
+            }
             session.commit(resultIntent());
+            committed = true;
             return OK;
         } catch (IOException e) {
             return ERR_INSTALL;
@@ -249,8 +339,24 @@ final class UpdateInstaller {
             return ERR_INSTALL;
         } finally {
             if (session != null) {
+                if (committed) {
+                    // 已经交给系统的会话才 close()：它此后归系统管。
+                    try {
+                        session.close();
+                    } catch (Exception ignored) {
+                    }
+                } else {
+                    // 没提交成的会话必须 abandon() 而不是 close()：close() 只释放这个对象，
+                    // 会话和已经写进去的 staging 数据会留在系统里，反复失败会白占存储。
+                    try {
+                        session.abandon();
+                    } catch (Exception ignored) {
+                    }
+                }
+            } else if (sessionId >= 0) {
+                // 会话建出来了但没打开成功（session 仍为 null），按 id 丢掉，别留个空会话占地方。
                 try {
-                    session.close();
+                    installer.abandonSession(sessionId);
                 } catch (Exception ignored) {
                 }
             }

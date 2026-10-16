@@ -35,7 +35,7 @@ Kimi Code Remote Control 的**非官方**开源安卓壳应用（WebView Shell�
 - Cookie 按会话凭证保护：面板值默认掩码，用户主动点击才显示；面板读取结果不另行落盘/存储，不记录，不通过日志、Intent 或 Bundle 传递，不提供复制、导出或清除 Cookie。刷新仅通过 `getCookie` 重新读取，不触发 flush；弹窗显式设置 `FLAG_SECURE`，关闭或切后台时清理内存条目与视图。
 - `FLAG_SECURE` 防截屏与最近任务缩略图泄露，默认在所有界面开启，用户可在「设置」页关闭（见「截屏保护开关」）；「登录状态」面板显示凭证，无论开关如何都强制开启。`allowBackup=false` 防书签被系统备份上云。
 - 签名密钥不入库：正式 release 经 CI Secrets 注入；本地与 CI 日常构建使用独立的 debug 密钥，该密钥固定存放于 `~/.android/debug.keystore`（已存在则直接复用），保证同一台机器上 debug 包签名稳定、可覆盖安装。
-- 更新以签名证书为信任锚：安装前比对下载包与当前已安装包的签名证书，不一致即拒绝安装，用于防止没有私钥者替换服务器上的安装包。SHA-256 只负责发现传输损坏；只能连接 CNB 时哈希也来自 CNB，不能单独防范 CNB 内容被篡改，篡改仍由签名校验拦截。两个源的产物同名、同 SHA-256、同一签名；手动检查会核对两个源的版本号与 SHA-256，任一不一致就拒绝本次更新并提示手动核对。校验不通过一律不安装，只提供「打开 Release 页面」兜底，没有「跳过校验继续安装」的选项。`REQUEST_INSTALL_PACKAGES` 权限只用于安装从 GitHub Releases 或 CNB 下载、且 SHA-256 与签名都核对通过的包。
+- 更新以签名证书为信任锚：安装前比对下载包与当前已安装包的签名证书，不一致即拒绝安装，用于防止没有私钥者替换服务器上的安装包。SHA-256 只负责发现传输损坏；只能连接 CNB 时哈希也来自 CNB，不能单独防范 CNB 内容被篡改，篡改仍由签名校验拦截。两个源的产物同名、同 SHA-256、同一签名；手动检查会在**两个源都能取到元数据时**交叉核对版本号与摘要（SHA-256 只在两边都非空时比对），不一致就拒绝本次更新并提示手动核对；另一个源不可达或解析失败时这一步会被跳过。无论是否交叉核对，安装前都仍会校验下载包的 SHA-256 与签名。校验不通过一律不安装，只提供「打开 Release 页面」兜底，没有「跳过校验继续安装」的选项。`REQUEST_INSTALL_PACKAGES` 权限只用于安装从 GitHub Releases 或 CNB 下载、且 SHA-256 与签名都核对通过的包。
 - 唯一直接依赖 ZXing Core（Apache-2.0，纯 Java 二维码解码，见 NOTICE）随源码固定版本并提供 SHA-256 校验，不引入任何原生库或 GMS 服务。
 
 ## 构建
@@ -78,9 +78,9 @@ python tools/make-icons.py
 
 自行生成新密钥：`keytool -genkeypair -keystore release.keystore -alias kimirc -keyalg RSA -keysize 2048 -validity 10000`，注意更新上表与下方指纹。
 
-Release 发布后，`.github/workflows/sync-cnb.yml` 会由 `release: published` 触发，也可手动指定 tag：下载本 Release 的 APK 并对字节实测 SHA-256（不从正文抓取字符串），生成 CNB 版清单 `latest.json`，把该 tag 推到 CNB 仓，再把清单提交到 CNB 仓的 `updater` 分支（该分支只有 `latest.json`）。工作流会检查被 tag 的提交中是否存在 `.cnb.yml`，不存在就直接失败，避免发出指向死链的清单。
+Release 发布后，`.github/workflows/sync-cnb.yml` 会由推送 `v*` 标签触发，也可手动指定 tag：它与 release 工作流同时起跑，因此下载 APK 前会带时限地等待该 Release 的 APK 附件就绪；随后下载本 Release 的 APK 并对字节实测 SHA-256（不从正文抓取字符串），生成 CNB 版清单 `latest.json`，把该 tag 推到 CNB 仓，再把清单提交到 CNB 仓的 `updater` 分支（该分支只有 `latest.json`）。工作流会检查被 tag 的提交中是否存在 `.cnb.yml`，不存在就直接失败，避免发出指向死链的清单。这里**不用** `release: published` 触发——release 工作流用 Actions 自带的 `GITHUB_TOKEN` 创建 Release，而 GitHub 规定由 `GITHUB_TOKEN` 触发的事件不会再触发新的 workflow 运行，那条触发对自动流程从未生效过。推 tag 之后、提交清单之前，工作流还会实测一次清单要指向的 CNB 附件直链（下载整包比对 SHA-256，最多等 8 分钟），到时限仍拿不到或对不上只告警、不失败；清单写入 `updater` 分支时只允许升不允许降，用手动补同步旧 tag 不会把清单回滚到更旧的版本。
 
-仓库根目录的 `.cnb.yml` 是 CNB 侧流水线，由 `tag_push` 触发，用内置任务 `git:release` 创建同名 Release，再把 APK 从 GitHub Release 拉到 CNB 挂成 Release 附件。CNB 的 `tag_push` 使用被 tag 的那个提交里的 `.cnb.yml`，所以修改 `.cnb.yml` 必须先合入 `master` 再打新标签才生效；`sync-cnb.yml` 使用默认分支的版本，修改后不需要重新打标签。
+仓库根目录的 `.cnb.yml` 是 CNB 侧流水线，由 `tag_push` 触发，用内置任务 `git:release` 创建同名 Release，再把 APK 从 GitHub Release 拉到 CNB 挂成 Release 附件。CNB 的 `tag_push` 使用被 tag 的那个提交里的 `.cnb.yml`，所以修改 `.cnb.yml` 必须先合入 `master` 再打新标签才生效；`sync-cnb.yml` 同样取自被 tag 的那个提交，改它也**必须先合入 `master` 再打新标签**。
 
 目前仍有以下待验证项与已知风险：
 

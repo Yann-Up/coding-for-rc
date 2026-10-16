@@ -4,7 +4,9 @@ name: sync-cnb
 #   1. 取本 Release 的 APK，对文件字节实测 SHA-256（不从 Release 正文里正则抓哈希字符串）
 #   2. 生成 CNB 版清单 latest.json（客户端契约）
 #   3. 把该 tag 推到 CNB 仓，触发 CNB 侧 .cnb.yml 的 tag_push 流水线
-#   4. 把 latest.json 提交到 CNB 仓的 updater 分支（该分支只有 latest.json，不夹带源码）
+#   4. 实测 CNB 附件直链可下载且哈希一致；拿不到或对不上只告警，不阻断发布
+#   5. 把 latest.json 提交到 CNB 仓的 updater 分支（该分支只有 latest.json，不夹带源码；
+#      提交前挡掉 versionCode 回退，手动补同步旧 tag 不会覆盖更新的清单）
 #
 # 触发用 push: tags，而不是 release: published。被 tag 的那个提交里的 release.yml
 # 是用 Actions 自带的 GITHUB_TOKEN 创建 Release 的，而 GitHub 规定「由 GITHUB_TOKEN 触发的
@@ -219,21 +221,70 @@ jobs:
           # 用户名固定是 cnb，密码是 token；token 不出现在日志里（set -x 未开启）
           git push "https://cnb:${CNB_TOKEN}@cnb.cool/${CNB_REPO}.git" "refs/tags/${TAG}:refs/tags/${TAG}"
 
+      # 推 tag 只是让 CNB 侧的 tag_push 流水线起跑，附件要等它把 APK 从 GitHub 拉下来、
+      # 建好同名 Release 才存在。清单一旦提交就指向那条直链，流水线失败会留下永久死链，
+      # 所以发布前先实测一次这个直链：整包约 1MB，直接下载算 SHA-256 与本次实测值比对。
+      # 到时限仍拿不到或对不上只告警不失败——客户端拿不到 CNB 会回退 GitHub，
+      # 在这里硬失败反而会让 CNB 侧彻底没有清单。
+      - name: 确认 CNB 附件可下载且哈希一致
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          APK: ${{ steps.meta.outputs.apk }}
+          SHA256: ${{ steps.apk.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          URL="${CNB_WEB}/-/releases/download/${TAG}/${APK}"
+          for attempt in $(seq 1 32); do
+            # curl 用 -f：404/5xx 算失败，留在 if 条件里，不会触发 set -e
+            if curl -fsSL --max-time 60 -o probe.apk "$URL"; then
+              GOT=$(sha256sum probe.apk | awk '{print $1}')
+              if [ "$GOT" = "$SHA256" ]; then
+                echo "CNB attachment verified (attempt $attempt): size=$(stat -c %s probe.apk) sha256=$GOT"
+                exit 0
+              fi
+              echo "attempt $attempt: sha256 mismatch, expected $SHA256 got $GOT"
+            else
+              echo "attempt $attempt: $URL not downloadable yet"
+            fi
+            sleep 15
+          done
+          echo "::warning::CNB attachment not verified within 8 minutes ($URL); publishing latest.json anyway, the client falls back to GitHub"
+
       - name: 把 latest.json 提交到 CNB 的 updater 分支
         env:
           CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
           TAG: ${{ steps.meta.outputs.tag }}
+          VERSION_CODE: ${{ steps.meta.outputs.version_code }}
         run: |
           set -euo pipefail
           git clone --depth 1 "https://cnb:${CNB_TOKEN}@cnb.cool/${CNB_REPO}.git" cnb-sync
           cd cnb-sync
           if git ls-remote --exit-code origin updater >/dev/null 2>&1; then
             git fetch --depth 1 origin updater
-            git checkout -b updater FETCH_HEAD
+            # 这里必须是 -B 而不是 -b：CNB 仓的 HEAD 已经指向 updater，clone 时默认分支
+            # 就是这个分支、本地已有同名分支，用 -b 会因「a branch named 'updater' already
+            # exists」直接失败（set -e 终止整个步骤），清单再也发不出去。
+            # -B 把该分支重置到刚 fetch 的远端提交上，首次与重跑走同一条路径。
+            git checkout -B updater FETCH_HEAD
           else
             # 首次创建：orphan 分支，保证 updater 上只有 latest.json，不夹带源码
             git checkout --orphan updater
             git rm -rf . >/dev/null 2>&1 || true
+          fi
+          # 手动 workflow_dispatch 补同步旧 tag 时，旧清单会直接盖掉 updater 上的最新版本，
+          # 让已经升级的客户端看不到更新，所以只允许升不允许降。
+          # 现有清单不存在、没有 versionCode 或该字段不是纯数字时一律放行，别让守卫挡住正常发版。
+          EXISTING_CODE=""
+          if [ -f latest.json ]; then
+            EXISTING_CODE=$(sed -n 's/.*"versionCode"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' latest.json | head -n 1 || true)
+          fi
+          if [ -z "$EXISTING_CODE" ]; then
+            echo "no comparable versionCode on the updater branch; skipping the downgrade guard"
+          elif [ "$EXISTING_CODE" -gt "$VERSION_CODE" ]; then
+            echo "::error::refusing to downgrade: the updater branch already publishes versionCode $EXISTING_CODE, but this sync (tag $TAG) would overwrite it with $VERSION_CODE"
+            exit 1
+          else
+            echo "downgrade guard passed: updater versionCode $EXISTING_CODE <= $VERSION_CODE ($TAG)"
           fi
           cp ../dist/cnb-latest.json latest.json
           git add latest.json

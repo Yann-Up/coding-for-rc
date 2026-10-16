@@ -117,13 +117,15 @@
     <string name="update_err_inconsistent">两个更新源给出的信息不一致，已停止更新。请前往发布页面自行核对。</string>
     <string name="update_err_download">下载失败，请稍后重试，或前往发布页面手动下载</string>
     <string name="update_err_hash">安装包校验未通过，已停止安装</string>
-    <string name="update_sign_mismatch">安装包签名与当前版本不一致，无法覆盖安装。请先卸载本应用，再前往发布页面重新安装。</string>
+    <string name="update_sign_mismatch">安装包签名与当前版本不一致，已停止安装。请前往官方发布页面核对后重新下载。</string>
     <string name="update_install_failed">安装失败，请稍后重试</string>
     <string name="update_install_blocked">安装被系统阻止</string>
     <string name="update_install_aborted">安装已取消</string>
     <string name="update_install_invalid">安装包无效，已停止安装</string>
-    <string name="update_install_conflict">与已安装的应用冲突，请先卸载后再安装</string>
+    <string name="update_install_conflict">安装包与已安装的应用存在冲突，安装未能完成</string>
     <string name="update_install_storage">存储空间不足，无法完成安装</string>
+    <string name="update_install_incompatible">安装包与当前设备不兼容，已停止安装</string>
+    <string name="update_install_no_confirm">未能打开系统安装确认页，安装未继续，请稍后重试</string>
     <string name="update_unknown_source_title">需要允许安装未知应用</string>
     <string name="update_unknown_source_message">系统默认阻止应用安装安装包。请在接下来的设置页里允许「KimiRC」安装未知应用，返回本应用后会自动继续下载安装。</string>
     <string name="update_goto_settings">去设置</string>

@@ -39,6 +39,8 @@ final class UpdatePrompt {
     private boolean verified;
     // 等用户去系统设置里授权「安装未知应用」期间挂着的待装版本。
     private UpdateChecker.Info pendingInstall;
+    // 用户在授权弹窗里点了「去设置」：只有这条路径才保留 pendingInstall，其余关法都算放弃。
+    private boolean keepPendingInstall;
     // 手动检查结束时回主线程跑一次，用来把入口上那句「检查中…」还原。
     private Runnable checkFinished;
     private boolean destroyed;
@@ -113,11 +115,9 @@ final class UpdatePrompt {
         startWorker(new Runnable() {
             @Override
             public void run() {
-                Result result = fetchBest(manual);
-                // 失败也记一次时间：否则每次回到前台都会重试一轮。
-                UpdateStore.markChecked(activity);
-                checking = false;
-                postResult(result, manual);
+                // 收尾（checking、checkFinished、已检查时间）都放到结果被处理的那一刻，
+                // 见 postResult：这样上一轮结果没处理完就不会起新一轮。
+                postResult(fetchBest(manual), manual);
             }
         });
     }
@@ -171,6 +171,11 @@ final class UpdatePrompt {
         post(new Runnable() {
             @Override
             public void run() {
+                // 结果真的被处理了，这一轮才算结束：在这里而不是 worker 里收回 checking，
+                // 顺带把回调还给当初发起这次检查的调用方。失败也记一次时间，否则每次
+                // 回到前台都会重试一轮；销毁导致结果没展示时也就不记，新实例还会再查。
+                checking = false;
+                UpdateStore.markChecked(activity);
                 Runnable finished = checkFinished;
                 checkFinished = null;
                 if (finished != null) {
@@ -208,15 +213,23 @@ final class UpdatePrompt {
         TextView current = content.findViewById(R.id.update_current);
         TextView latest = content.findViewById(R.id.update_latest);
         TextView notes = content.findViewById(R.id.update_notes);
+        TextView notesLabel = content.findViewById(R.id.update_notes_label);
         TextView source = content.findViewById(R.id.update_source);
 
         current.setText(activity.getString(R.string.settings_version_value,
                 UpdateChecker.installedVersionName(activity),
                 UpdateChecker.installedVersionCode(activity)));
-        latest.setText(activity.getString(R.string.settings_version_value,
-                info.versionName, info.versionCode));
+        // GitHub 来源没有版本代码，拼「1.2.3 (0)」只会让人以为出错了，这种情况只显示版本名。
+        if (info.versionCode > 0) {
+            latest.setText(activity.getString(R.string.settings_version_value,
+                    info.versionName, info.versionCode));
+        } else {
+            latest.setText(info.versionName);
+        }
         if (info.notes.isEmpty()) {
+            // 正文没有时标题也一起收起来，别留一个孤零零的「更新内容」。
             notes.setVisibility(View.GONE);
+            notesLabel.setVisibility(View.GONE);
         } else {
             notes.setText(info.notes);
         }
@@ -295,6 +308,7 @@ final class UpdatePrompt {
     }
 
     private void showPermission() {
+        keepPendingInstall = false;
         dialog = new SecureAlertDialog.Builder(activity,
                 R.style.Theme_KimiRC_Dialog_Alert)
                 .setTitle(R.string.update_unknown_source_title)
@@ -303,11 +317,23 @@ final class UpdatePrompt {
                         new DialogInterface.OnClickListener() {
                             @Override
                             public void onClick(DialogInterface d, int which) {
+                                // 用户主动去授权：留着他从设置回来时接着装。
+                                keepPendingInstall = true;
                                 openUnknownSourceSettings();
                             }
                         })
                 .setNegativeButton(R.string.cancel, null)
                 .create();
+        dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
+            @Override
+            public void onDismiss(DialogInterface d) {
+                // 点「取消」、按返回或点空白关掉，都表示放弃这次安装；只有「去设置」那条路例外。
+                if (!keepPendingInstall) {
+                    pendingInstall = null;
+                }
+                keepPendingInstall = false;
+            }
+        });
         dialog.show();
         dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
                 .setTextColor(activity.getColor(R.color.text_secondary));
@@ -492,10 +518,20 @@ final class UpdatePrompt {
         thread.start();
     }
 
-    private void post(Runnable action) {
+    // 入队前查一次生命周期，Runnable 真跑起来时再查一次：中途被销毁的话，
+    // 已经排进队列的动作不能再落到无主的窗口上。
+    private void post(final Runnable action) {
         if (destroyed || activity.isFinishing() || activity.isDestroyed()) {
             return;
         }
-        activity.runOnUiThread(action);
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (destroyed || activity.isFinishing() || activity.isDestroyed()) {
+                    return;
+                }
+                action.run();
+            }
+        });
     }
 }
