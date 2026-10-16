@@ -65,7 +65,15 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA256: ${{ steps.meta.outputs.sha256 }}
+          CERT: ${{ steps.meta.outputs.cert }}
         run: |
+          {
+            echo "非官方社区构建，仅供自用与学习，与 Moonshot AI 无关。"
+            echo
+            echo "- 文件 SHA-256: \`$SHA256\`"
+            echo "- $CERT"
+          } > release-notes.md
           gh release create "${{ github.ref_name }}" "${{ steps.meta.outputs.apk }}" \
             --title "${{ github.ref_name }}" \
-            --notes "非官方社区构建，仅供自用与学习，与 Moonshot AI 无关。\n\n- 文件 SHA-256: \`${{ steps.meta.outputs.sha256 }}\`\n- ${{ steps.meta.outputs.cert }}"
+            --notes-file release-notes.md
