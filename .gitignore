@@ -2,3 +2,5 @@ build/
 dist/
 *.keystore
 .DS_Store
+.idea/
+*.iml
