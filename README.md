@@ -40,7 +40,7 @@ Kimi Code Remote Control 的**非官方**开源安卓壳应用（WebView Shell�
 
 - JDK 21（`javac` 在 PATH 中；构建前会校验版本，低于 21 直接报错退出）
 - Android SDK（含 `platforms;android-34` 与 `build-tools;35.0.0`），通过 `ANDROID_HOME` / `ANDROID_SDK_ROOT` 指定，或直接装在默认目录
-- python3（或 zip），用于打包
+- python3（或 zip），用于打包；重新生成图标时另需 Pillow
 
 JDK 与 build-tools 的版本是绑定的：34.0.0 自带的 d8（R8 8.2.2）在解析 JDK 21 为内部类构造函数生成的空名 `MethodParameters` 属性时会抛 NPE，必须用 35.0.0 及以上（R8 8.6.2 已修复）。字节码目标仍为 Java 8，以保留 `-bootclasspath android.jar` 对平台 API 面的约束。
 
@@ -49,6 +49,16 @@ bash build.sh        # 默认 debug 签名，产物 dist/KimiRC-<版本>.apk
 ```
 
 CI（GitHub Actions）在 push 与 PR 上自动出包并上传 artifact。
+
+### 图标
+
+启动图标与启动图 logo 的位图均由 `assets/logo.png` 派生，换图后重新生成（需 Pillow）：
+
+```bash
+python tools/make-icons.py
+```
+
+脚本按 `res/` 的密度分档输出 `res/mipmap-*/ic_launcher_foreground.png`（自适应图标前景，108dp 画布 / 66dp 内容）与 `res/drawable-*/logo.png`（启动图用，144dp）。画布底色按图片边框泛洪扣除，图案内部的白（角色的眼睛）保留。图标背景层 `res/drawable/ic_launcher_background.xml` 为纯白。
 
 ## 发布
 
