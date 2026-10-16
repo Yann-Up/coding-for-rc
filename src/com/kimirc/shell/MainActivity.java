@@ -4,11 +4,8 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.KeyguardManager;
-import android.content.ClipData;
-import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.DialogInterface;
-import android.content.Intent;
 import android.hardware.biometrics.BiometricPrompt;
 import android.os.Build;
 import android.os.Bundle;
@@ -30,17 +27,12 @@ import java.util.List;
 
 public class MainActivity extends Activity {
 
-    private static final int REQ_SCAN = 43;
-
-    private static String pendingScanUrl;
-
     private boolean unlocked;
+    private boolean internalNavigation;
     private boolean switchAuthPending;
     private Runnable pendingAction;
     private DeviceAdapter adapter;
-    private EditText urlInputField;
     private TextView deviceCountView;
-    private TextView accountButton;
     private AlertDialog accountDialog;
     private AccountStore.Account activeAccount;
 
@@ -59,6 +51,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        internalNavigation = false;
         if (!unlocked) {
             authenticate();
         } else if (adapter != null) {
@@ -69,6 +62,10 @@ public class MainActivity extends Activity {
     @Override
     protected void onUserLeaveHint() {
         super.onUserLeaveHint();
+        if (internalNavigation) {
+            internalNavigation = false;
+            return;
+        }
         unlocked = false;
     }
 
@@ -85,18 +82,6 @@ public class MainActivity extends Activity {
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
         outState.putBoolean("unlocked", unlocked);
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQ_SCAN && resultCode == RESULT_OK && data != null) {
-            String text = data.getStringExtra(ScanActivity.EXTRA_RESULT);
-            if (text != null) {
-                pendingScanUrl = text.trim();
-            }
-            consumePendingScanUrl();
-        }
     }
 
     private void authenticate() {
@@ -173,21 +158,8 @@ public class MainActivity extends Activity {
         unlocked = true;
         if (adapter == null) {
             initMainUi();
-        }
-        consumePendingScanUrl();
-    }
-
-    private void consumePendingScanUrl() {
-        if (pendingScanUrl == null) {
-            return;
-        }
-        String url = pendingScanUrl;
-        pendingScanUrl = null;
-        if (urlInputField != null) {
-            urlInputField.setText(url);
-            urlInputField.setSelection(url.length());
         } else {
-            showAddDialog(url);
+            refresh();
         }
     }
 
@@ -204,7 +176,6 @@ public class MainActivity extends Activity {
         ListView listView = findViewById(R.id.device_list);
         View emptyView = findViewById(R.id.empty_view);
         deviceCountView = findViewById(R.id.device_count);
-        accountButton = findViewById(R.id.account_button);
         Button addButton = findViewById(R.id.add_button);
 
         activeAccount = AccountStore.active(this);
@@ -216,6 +187,7 @@ public class MainActivity extends Activity {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                 DeviceStore.Device device = adapter.getItem(position);
+                internalNavigation = true;
                 WebActivity.start(MainActivity.this, activeAccount.slot, activeAccount.name,
                         device.name, device.url);
             }
@@ -228,7 +200,7 @@ public class MainActivity extends Activity {
             }
         });
 
-        accountButton.setOnClickListener(new View.OnClickListener() {
+        findViewById(R.id.settings_button).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 showAccountDialog();
@@ -237,7 +209,8 @@ public class MainActivity extends Activity {
         addButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                showAddDialog();
+                internalNavigation = true;
+                startActivity(AddDeviceActivity.createIntent(MainActivity.this));
             }
         });
         refresh();
@@ -247,7 +220,6 @@ public class MainActivity extends Activity {
         if (activeAccount == null) {
             activeAccount = AccountStore.active(this);
         }
-        accountButton.setText(activeAccount.name);
         List<DeviceStore.Device> devices = DeviceStore.load(this, activeAccount.id);
         adapter.refresh(devices);
         deviceCountView.setText(getString(R.string.device_count, devices.size()));
@@ -304,7 +276,7 @@ public class MainActivity extends Activity {
                 .setTitle(R.string.account_switch_title)
                 .setView(content)
                 .setPositiveButton(R.string.account_add, null)
-                .setNegativeButton(R.string.cookie_close, null)
+                .setNegativeButton(R.string.account_close, null)
                 .create();
         accountDialog.show();
         accountDialog.getButton(AlertDialog.BUTTON_NEGATIVE)
@@ -447,93 +419,6 @@ public class MainActivity extends Activity {
         dialog.show();
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(getColor(R.color.danger));
         dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(getColor(R.color.text_secondary));
-    }
-
-    private void showAddDialog() {
-        showAddDialog(null);
-    }
-
-    private void showAddDialog(String presetUrl) {
-        View form = getLayoutInflater().inflate(R.layout.dialog_add_device, null);
-        final EditText nameInput = form.findViewById(R.id.name_input);
-        final EditText urlInput = form.findViewById(R.id.url_input);
-        if (presetUrl != null) {
-            urlInput.setText(presetUrl);
-        } else {
-            String clip = readClipboardLink();
-            if (clip != null) {
-                urlInput.setText(clip);
-            }
-        }
-        urlInputField = urlInput;
-
-        final AlertDialog dialog = new AlertDialog.Builder(this, R.style.Theme_KimiRC_Dialog_Alert)
-                .setTitle(R.string.add_device)
-                .setView(form)
-                .setPositiveButton(R.string.save, null)
-                .setNeutralButton(R.string.scan_add, null)
-                .setNegativeButton(R.string.cancel, null)
-                .create();
-        dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
-            @Override
-            public void onDismiss(DialogInterface d) {
-                if (urlInputField == urlInput) {
-                    urlInputField = null;
-                }
-            }
-        });
-        dialog.show();
-        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(getColor(R.color.text_secondary));
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE)
-                .setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        String name = nameInput.getText().toString().trim();
-                        String url = urlInput.getText().toString().trim();
-                        nameInput.setError(null);
-                        urlInput.setError(null);
-                        if (name.isEmpty()) {
-                            nameInput.setError(getString(R.string.name_required));
-                            nameInput.requestFocus();
-                            return;
-                        }
-                        if (!url.startsWith(WebActivity.REMOTE_URL_PREFIX)) {
-                            urlInput.setError(getString(R.string.url_invalid));
-                            urlInput.requestFocus();
-                            return;
-                        }
-                        DeviceStore.add(MainActivity.this,
-                                new DeviceStore.Device(activeAccount.id, name, url));
-                        refresh();
-                        dialog.dismiss();
-                    }
-                });
-        dialog.getButton(AlertDialog.BUTTON_NEUTRAL)
-                .setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        startActivityForResult(new Intent(MainActivity.this, ScanActivity.class),
-                                REQ_SCAN);
-                    }
-                });
-    }
-
-    private String readClipboardLink() {
-        ClipboardManager clipboard =
-                (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-        if (clipboard == null) {
-            return null;
-        }
-        ClipData clip = clipboard.getPrimaryClip();
-        if (clip == null || clip.getItemCount() == 0) {
-            return null;
-        }
-        CharSequence text = clip.getItemAt(0).coerceToText(this);
-        if (text == null) {
-            return null;
-        }
-        String value = text.toString().trim();
-        return value.startsWith(WebActivity.REMOTE_URL_PREFIX) ? value : null;
     }
 
     private static class DeviceAdapter extends BaseAdapter {

@@ -7,64 +7,95 @@
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="48dp"
+        android:layout_height="wrap_content"
         android:background="@drawable/bg_web_bar"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingLeft="4dp"
-        android:paddingRight="4dp">
+        android:orientation="vertical">
 
-        <ImageButton
-            android:id="@+id/web_back"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/web_back"
-            android:padding="12dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_back" />
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="52dp">
 
-        <TextView
-            android:id="@+id/web_title"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="4dp"
-            android:layout_weight="1"
-            android:ellipsize="end"
-            android:fontFamily="sans-serif-medium"
-            android:maxLines="1"
-            android:textColor="@color/text_primary"
-            android:textSize="@dimen/text_device_name" />
+            <TextView
+                android:id="@+id/web_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_marginLeft="60dp"
+                android:layout_marginRight="60dp"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:gravity="center"
+                android:maxLines="1"
+                android:textColor="@color/text_primary"
+                android:textSize="17sp" />
 
-        <TextView
-            android:id="@+id/web_reload"
-            android:layout_width="wrap_content"
-            android:layout_height="48dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:fontFamily="sans-serif-medium"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:minWidth="48dp"
-            android:paddingLeft="8dp"
-            android:paddingRight="8dp"
-            android:text="@string/web_reload"
-            android:textColor="@color/brand"
-            android:textSize="@dimen/text_body" />
+            <ImageButton
+                android:id="@+id/web_back"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="start|center_vertical"
+                android:layout_marginLeft="4dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/web_back"
+                android:padding="12dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_back" />
 
-        <TextView
-            android:id="@+id/web_cookie"
-            android:layout_width="wrap_content"
-            android:layout_height="48dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:fontFamily="sans-serif-medium"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:minWidth="48dp"
-            android:paddingLeft="8dp"
-            android:paddingRight="8dp"
-            android:text="@string/cookie_title"
-            android:textColor="@color/brand"
-            android:textSize="@dimen/text_body" />
+            <ImageButton
+                android:id="@+id/web_more"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="end|center_vertical"
+                android:layout_marginRight="4dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/web_more"
+                android:padding="13dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_more" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:layout_marginLeft="12dp"
+            android:layout_marginTop="2dp"
+            android:layout_marginRight="12dp"
+            android:layout_marginBottom="10dp"
+            android:background="@drawable/bg_url_bar"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingLeft="14dp"
+            android:paddingRight="4dp">
+
+            <ImageView
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:contentDescription="@null"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_lock" />
+
+            <TextView
+                android:id="@+id/web_url"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="8dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+
+            <ImageButton
+                android:id="@+id/web_reload"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/web_reload"
+                android:padding="9dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_reload" />
+        </LinearLayout>
     </LinearLayout>
 
     <FrameLayout

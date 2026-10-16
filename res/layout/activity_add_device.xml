@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/app_background"
+    android:orientation="vertical">
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="56dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:fontFamily="sans-serif-medium"
+            android:maxLines="1"
+            android:text="@string/add_device"
+            android:textColor="@color/text_primary"
+            android:textSize="17sp" />
+
+        <ImageButton
+            android:id="@+id/back_button"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="start|center_vertical"
+            android:layout_marginLeft="4dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/web_back"
+            android:padding="12dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_back" />
+    </FrameLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true"
+        android:overScrollMode="ifContentScrolls"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingLeft="@dimen/page_horizontal"
+            android:paddingTop="12dp"
+            android:paddingRight="@dimen/page_horizontal"
+            android:paddingBottom="24dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-medium"
+                android:text="@string/device_name"
+                android:textAppearance="@style/Text.KimiRC.Caption" />
+
+            <EditText
+                android:id="@+id/name_input"
+                style="@style/Widget.KimiRC.Input"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:layout_marginTop="8dp"
+                android:drawableLeft="@drawable/ic_monitor"
+                android:drawablePadding="10dp"
+                android:hint="@string/device_name_hint"
+                android:imeOptions="actionNext"
+                android:inputType="textCapSentences"
+                android:maxLines="1"
+                android:singleLine="true" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="@string/device_url"
+                    android:textAppearance="@style/Text.KimiRC.Caption" />
+
+                <TextView
+                    android:id="@+id/scan_button"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:fontFamily="sans-serif-medium"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:minWidth="48dp"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:text="@string/scan_add"
+                    android:textColor="@color/brand"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <EditText
+                android:id="@+id/url_input"
+                style="@style/Widget.KimiRC.Input"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:layout_marginTop="8dp"
+                android:drawableLeft="@drawable/ic_globe"
+                android:drawablePadding="10dp"
+                android:hint="@string/device_url_hint"
+                android:imeOptions="actionDone"
+                android:inputType="textUri"
+                android:maxLines="1"
+                android:singleLine="true" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/device_url_help"
+                android:textAppearance="@style/Text.KimiRC.Caption"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </ScrollView>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/app_background"
+        android:orientation="vertical"
+        android:paddingLeft="@dimen/page_horizontal"
+        android:paddingTop="12dp"
+        android:paddingRight="@dimen/page_horizontal"
+        android:paddingBottom="20dp">
+
+        <Button
+            android:id="@+id/save_button"
+            style="@style/Widget.KimiRC.Button.Primary"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/control_height"
+            android:text="@string/save" />
+    </LinearLayout>
+</LinearLayout>

@@ -24,6 +24,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.WebViewDatabase;
 import android.widget.FrameLayout;
+import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -45,11 +46,15 @@ public abstract class WebActivity extends Activity {
     // 数据目录后缀是进程级的，每个进程只能定一次；槽位与进程一一对应，所以这里只会被赋值一次。
     private static int appliedSlot = -1;
 
+    private static final int MENU_RELOAD = 1;
+    private static final int MENU_LOGIN_STATE = 2;
+
     private FrameLayout container;
     private WebView webView;
     private WebView popupView;
-    private CookieViewer cookieViewer;
+    private LoginStateViewer loginStateViewer;
     private ValueCallback<Uri[]> pendingFileCallback;
+    private TextView urlView;
 
     protected abstract int slotIndex();
 
@@ -111,6 +116,8 @@ public abstract class WebActivity extends Activity {
         container = findViewById(R.id.web_container);
         TextView title = findViewById(R.id.web_title);
         title.setText(deviceName != null && !deviceName.isEmpty() ? deviceName : accountName);
+        urlView = findViewById(R.id.web_url);
+        urlView.setText(url);
 
         findViewById(R.id.web_back).setOnClickListener(new View.OnClickListener() {
             @Override
@@ -126,13 +133,10 @@ public abstract class WebActivity extends Activity {
                 }
             }
         });
-        findViewById(R.id.web_cookie).setOnClickListener(new View.OnClickListener() {
+        findViewById(R.id.web_more).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if (cookieViewer != null) {
-                    cookieViewer.dismiss();
-                }
-                cookieViewer = CookieViewer.show(WebActivity.this, accountName);
+                showOverflowMenu(accountName);
             }
         });
 
@@ -147,6 +151,38 @@ public abstract class WebActivity extends Activity {
             wipeSlotStorage(slot);
         }
         webView.loadUrl(url);
+    }
+
+    private void showOverflowMenu(final String accountName) {
+        PopupMenu menu = new PopupMenu(this, findViewById(R.id.web_more));
+        menu.getMenu().add(0, MENU_RELOAD, 0, R.string.web_reload);
+        menu.getMenu().add(0, MENU_LOGIN_STATE, 1, R.string.login_state_title);
+        menu.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
+            @Override
+            public boolean onMenuItemClick(android.view.MenuItem item) {
+                if (item.getItemId() == MENU_RELOAD) {
+                    if (webView != null) {
+                        webView.reload();
+                    }
+                    return true;
+                }
+                if (item.getItemId() == MENU_LOGIN_STATE) {
+                    if (loginStateViewer != null) {
+                        loginStateViewer.dismiss();
+                    }
+                    loginStateViewer = LoginStateViewer.show(WebActivity.this, accountName);
+                    return true;
+                }
+                return false;
+            }
+        });
+        menu.show();
+    }
+
+    private void updateUrl(String url) {
+        if (urlView != null && url != null) {
+            urlView.setText(url);
+        }
     }
 
     private static synchronized void applyDataDirectory(int slot) {
@@ -194,9 +230,9 @@ public abstract class WebActivity extends Activity {
     @Override
     protected void onStop() {
         super.onStop();
-        if (cookieViewer != null) {
-            cookieViewer.dismiss();
-            cookieViewer = null;
+        if (loginStateViewer != null) {
+            loginStateViewer.dismiss();
+            loginStateViewer = null;
         }
     }
 
@@ -298,6 +334,12 @@ public abstract class WebActivity extends Activity {
     }
 
     private class ShellWebViewClient extends WebViewClient {
+        @Override
+        public void onPageFinished(WebView view, String url) {
+            super.onPageFinished(view, url);
+            updateUrl(view.getUrl());
+        }
+
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
             return handleUri(request.getUrl());

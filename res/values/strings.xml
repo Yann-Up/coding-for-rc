@@ -9,7 +9,7 @@
     <string name="add_device">添加设备</string>
     <string name="device_name">设备名称</string>
     <string name="device_name_hint">例如：我的工作台</string>
-    <string name="device_url">远控链接</string>
+    <string name="device_url">远程链接</string>
     <string name="device_url_hint">https://code-rc.kimi.com/</string>
     <string name="device_url_help">粘贴链接，或使用“扫一扫”快速添加</string>
     <string name="save">保存</string>
@@ -36,19 +36,21 @@
     <string name="scan_error">相机启动失败，请重试</string>
     <string name="device_icon">设备</string>
     <string name="open_device">打开设备</string>
-    <string name="cookie_title">账号管理</string>
-    <string name="cookie_query_host">登录域：%1$s</string>
-    <string name="cookie_entry_count">凭证条目：%1$d</string>
-    <string name="cookie_shared_hint">所有设备共享当前登录状态</string>
-    <string name="cookie_empty">当前未检测到登录信息</string>
-    <string name="cookie_show_values">显示凭证</string>
-    <string name="cookie_hide_values">隐藏凭证</string>
-    <string name="cookie_refresh">刷新</string>
-    <string name="cookie_close">关闭</string>
-    <string name="cookie_masked_value">••••••••</string>
+    <string name="login_state_title">登录状态</string>
+    <string name="login_state_host_label">登录域</string>
+    <string name="login_state_count_label">凭证条目</string>
+    <string name="login_state_shared">本账号下所有设备共享此登录状态</string>
+    <string name="login_state_detail">查看凭证详情</string>
+    <string name="login_state_footer">凭证仅保存在本机\n下次访问无需重新登录</string>
+    <string name="login_state_empty">当前未检测到登录信息</string>
+    <string name="login_state_show_values">显示凭证</string>
+    <string name="login_state_hide_values">隐藏凭证</string>
+    <string name="login_state_refresh">刷新</string>
+    <string name="login_state_close">关闭</string>
+    <string name="login_state_masked_value">••••••••</string>
 
     <string name="default_account_name">我的账号</string>
-    <string name="account_switch_title">切换账号</string>
+    <string name="account_switch_title">账号管理</string>
     <string name="account_list_hint">点按切换账号，长按可重命名或删除</string>
     <string name="account_add">新建账号</string>
     <string name="account_rename">重命名</string>
@@ -61,8 +63,10 @@
     <string name="account_name_required">请填写账号名称</string>
     <string name="account_limit">最多支持 %1$d 个账号，请先删除一个</string>
     <string name="account_delete_confirm">确定删除「%1$s」吗？该账号下的设备和登录状态都会被清除。</string>
+    <string name="account_close">关闭</string>
     <string name="web_back">返回</string>
     <string name="web_reload">刷新</string>
-    <string name="cookie_title_with_account">账号管理 · %1$s</string>
+    <string name="web_more">更多</string>
+    <string name="login_state_title_with_account">登录状态 · %1$s</string>
     <string name="render_gone">网页进程已崩溃，请重新进入设备</string>
 </resources>

@@ -3,12 +3,12 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginBottom="8dp"
-    android:background="@color/surface_muted"
+    android:background="@drawable/bg_login_state_item"
     android:orientation="vertical"
     android:padding="14dp">
 
     <TextView
-        android:id="@+id/cookie_name"
+        android:id="@+id/login_state_name"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:fontFamily="sans-serif-medium"
@@ -19,7 +19,7 @@
         android:textSize="15sp" />
 
     <TextView
-        android:id="@+id/cookie_value"
+        android:id="@+id/login_state_value"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="6dp"

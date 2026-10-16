@@ -69,6 +69,12 @@
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode" />
 
         <activity
+            android:name=".AddDeviceActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".ScanActivity"
             android:exported="false"
             android:theme="@style/Theme.KimiRC.Scan"
