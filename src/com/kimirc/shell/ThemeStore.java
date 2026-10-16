@@ -56,9 +56,9 @@ public final class ThemeStore {
     }
 
     // 覆盖配置里的 uiMode，让 -night 资源在手动选定的模式下生效：必须在 setContentView 之前完成，
-    // 所以由 ThemedActivity.attachBaseContext 调用。
-    public static Context wrap(Context base) {
-        String mode = mode(base);
+    // 所以由 ThemedActivity.attachBaseContext 调用。mode 由调用方传入——它还要记下这个窗口是按
+    // 哪个主题建起来的，好在回到前台时判断要不要重建。
+    public static Context wrap(Context base, String mode) {
         if (MODE_SYSTEM.equals(mode)) {
             return base;
         }

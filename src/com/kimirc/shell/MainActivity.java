@@ -248,6 +248,9 @@ public class MainActivity extends ThemedActivity {
         View emptyView = findViewById(R.id.empty_view);
         deviceCountView = findViewById(R.id.device_count);
         View addButton = findViewById(R.id.add_button);
+        // 遮罩在布局里默认可见，必须在这里就取到：unlocked 为 true 时不走 showSplash()，
+        // 只在 showSplash 里赋值的话 hideSplash() 就成了空操作，遮罩会一直盖着吃掉所有点击。
+        splashOverlay = findViewById(R.id.splash_overlay);
 
         activeAccount = AccountStore.active(this);
         adapter = new DeviceAdapter(this);
