@@ -1,10 +1,13 @@
 package com.kimirc.shell;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.net.http.SslError;
 import android.os.Bundle;
@@ -35,6 +38,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 
 public abstract class WebActivity extends ThemedActivity {
 
@@ -43,14 +47,17 @@ public abstract class WebActivity extends ThemedActivity {
     public static final String EXTRA_ACCOUNT = "com.kimirc.shell.extra.ACCOUNT";
     public static final String EXTRA_ACCOUNT_ID = "com.kimirc.shell.extra.ACCOUNT_ID";
     public static final String EXTRA_SLOT = "com.kimirc.shell.extra.SLOT";
+    public static final String EXTRA_NOTIFY_TAG = "com.kimirc.shell.extra.NOTIFY_TAG";
     public static final String REMOTE_URL_PREFIX = "https://code-rc.kimi.com/";
 
     public static final int SLOT_COUNT = 4;
 
     private static final String TAG = "KimiRC";
     private static final int REQ_FILE_CHOOSER = 42;
+    private static final int REQ_NOTIFY_PERMISSION = 43;
     private static final String ALLOWED_HOST = "kimi.com";
     private static final String DATA_DIRECTORY_PREFIX = "acct";
+    private static final String NOTIFY_BRIDGE_NAME = "AndroidNotify";
 
     // 数据目录后缀是进程级的，每个进程只能定一次；槽位与进程一一对应，所以这里只会被赋值一次。
     private static int appliedSlot = -1;
@@ -66,6 +73,15 @@ public abstract class WebActivity extends ThemedActivity {
     private ValueCallback<Uri[]> pendingFileCallback;
     private String accountId;
     private String nicknameProbe;
+    private NotificationBridge notifyBridge;
+    private String notifyShim;
+    private String accountName;
+    private String deviceName;
+    private String remoteUrl;
+    // 通知权限只能在应用前台弹窗，页面却在后台才请求；这些状态用来把两边对齐。
+    private final ArrayList<String> pendingNotifyPermissions = new ArrayList<String>();
+    private boolean notifyPermissionInFlight;
+    private String pendingNotifyClick;
 
     protected abstract int slotIndex();
 
@@ -111,13 +127,13 @@ public abstract class WebActivity extends ThemedActivity {
         }
         applyDataDirectory(slot);
 
-        final String url = getIntent().getStringExtra(EXTRA_URL);
-        if (url == null || !url.startsWith(REMOTE_URL_PREFIX)) {
+        remoteUrl = getIntent().getStringExtra(EXTRA_URL);
+        if (remoteUrl == null || !remoteUrl.startsWith(REMOTE_URL_PREFIX)) {
             finish();
             return;
         }
-        String deviceName = getIntent().getStringExtra(EXTRA_NAME);
-        final String accountName = getIntent().getStringExtra(EXTRA_ACCOUNT);
+        deviceName = getIntent().getStringExtra(EXTRA_NAME);
+        accountName = getIntent().getStringExtra(EXTRA_ACCOUNT);
         if (accountName == null) {
             finish();
             return;
@@ -162,6 +178,9 @@ public abstract class WebActivity extends ThemedActivity {
         applySettings(webView);
         webView.setWebViewClient(new ShellWebViewClient());
         webView.setWebChromeClient(new ShellWebChromeClient());
+        // 桥对象在文档创建时就挂上 window，早于页面任何脚本；注入的 shim 只是用它来定义 window.Notification。
+        notifyBridge = new NotificationBridge(this);
+        webView.addJavascriptInterface(notifyBridge, NOTIFY_BRIDGE_NAME);
         container.addView(webView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
@@ -169,7 +188,7 @@ public abstract class WebActivity extends ThemedActivity {
             wipeSlotStorage(slot);
         }
         applyPendingCacheClear(slot);
-        webView.loadUrl(url);
+        webView.loadUrl(remoteUrl);
     }
 
     private void showOverflowMenu(final String accountName) {
@@ -259,6 +278,41 @@ public abstract class WebActivity extends ThemedActivity {
             applyWebBarPolicy();
             applyPendingCacheClear(slotIndex());
         }
+        // Activity 不在前台时系统不保证回调权限结果，回到前台就把「请求进行中」复位，别让它卡住后续请求。
+        notifyPermissionInFlight = false;
+        askNotificationPermission();
+        // 点通知进来时应用可能还没回到前台，等回到前台再把它交给页面。
+        flushPendingNotifyClick();
+    }
+
+    // 通知点击时这个账号的远控页还活着：系统把 Intent 投回同一实例，由这里转交给页面。
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (intent != null) {
+            pendingNotifyClick = intent.getStringExtra(EXTRA_NOTIFY_TAG);
+            flushPendingNotifyClick();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQ_NOTIFY_PERMISSION) {
+            return;
+        }
+        notifyPermissionInFlight = false;
+        boolean granted = grantResults != null && grantResults.length > 0
+                && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+        Log.i(TAG, granted ? "notify permission granted" : "notify permission denied");
+        if (!granted) {
+            NotifyCenter.rememberDenied();
+        }
+        for (int i = 0; i < pendingNotifyPermissions.size(); i++) {
+            replyNotifyPermission(pendingNotifyPermissions.get(i), granted ? "granted" : "denied");
+        }
+        pendingNotifyPermissions.clear();
     }
 
     @Override
@@ -293,6 +347,74 @@ public abstract class WebActivity extends ThemedActivity {
         }
         webView.destroy();
         webView = null;
+    }
+
+    // 网页侧 Notification.requestPermission() 走到这里：结果通过 __kimircNotifyPermission 回灌给页面的 Promise。
+    void requestNotifyPermission(String callbackId) {
+        if ("granted".equals(NotifyCenter.permissionState(this))) {
+            replyNotifyPermission(callbackId, "granted");
+            return;
+        }
+        if (callbackId != null) {
+            pendingNotifyPermissions.add(callbackId);
+        }
+        if (notifyPermissionInFlight) {
+            return;
+        }
+        if (isFinishing() || isDestroyed()) {
+            replyNotifyPermission(callbackId, "denied");
+            return;
+        }
+        notifyPermissionInFlight = true;
+        Log.i(TAG, "page requested notify permission");
+        requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                REQ_NOTIFY_PERMISSION);
+    }
+
+    // 页面在后台请求权限时系统不会弹窗，所以进入远控页先主动问一次；问过就不再打扰（见 NotifyCenter）。
+    private void askNotificationPermission() {
+        if (webView == null || notifyPermissionInFlight || !NotifyCenter.shouldAsk(this)) {
+            return;
+        }
+        notifyPermissionInFlight = true;
+        NotifyCenter.markAsked(this);
+        // 先把通知渠道建出来，用户在系统设置里能立刻看到「远控提醒」这一项。
+        NotifyCenter.ensureChannels(this);
+        requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                REQ_NOTIFY_PERMISSION);
+    }
+
+    private void replyNotifyPermission(String callbackId, String state) {
+        if (webView == null || callbackId == null) {
+            return;
+        }
+        // callbackId 来自页面，只能当数据拼进去。
+        webView.evaluateJavascript("window.__kimircNotifyPermission("
+                + JSONObject.quote(callbackId) + "," + JSONObject.quote(state) + ")", null);
+    }
+
+    // 页面自己的 onclick 会切到对应会话，所以这里只负责把点击事件送回去。
+    private void flushPendingNotifyClick() {
+        if (pendingNotifyClick == null || webView == null) {
+            return;
+        }
+        String tag = pendingNotifyClick;
+        pendingNotifyClick = null;
+        Log.i(TAG, "notify click delivered in slot " + slotIndex());
+        webView.evaluateJavascript("window.__kimircNotifyClick(" + JSONObject.quote(tag) + ")", null);
+    }
+
+    // 通知点击要能把被系统回收后的远控页重新拉起来，所以进入本页所需的参数原样带回。
+    Intent notificationIntent(String tag) {
+        Intent intent = new Intent(this, getClass());
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        intent.putExtra(EXTRA_SLOT, slotIndex());
+        intent.putExtra(EXTRA_ACCOUNT_ID, accountId);
+        intent.putExtra(EXTRA_ACCOUNT, accountName);
+        intent.putExtra(EXTRA_NAME, deviceName);
+        intent.putExtra(EXTRA_URL, remoteUrl);
+        intent.putExtra(EXTRA_NOTIFY_TAG, tag);
+        return intent;
     }
 
     // WebView 渲染进程崩溃时如果不在客户端接管，系统会直接杀掉整个应用进程。
@@ -418,26 +540,51 @@ public abstract class WebActivity extends ThemedActivity {
 
     private String probeScript() {
         if (nicknameProbe == null) {
-            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-            try (InputStream in = getResources().openRawResource(R.raw.nickname_probe)) {
-                byte[] chunk = new byte[4096];
-                int read;
-                while ((read = in.read(chunk)) > 0) {
-                    buffer.write(chunk, 0, read);
-                }
-            } catch (IOException e) {
-                Log.w(TAG, "nickname probe script unavailable", e);
-                return null;
-            }
-            nicknameProbe = new String(buffer.toByteArray(), StandardCharsets.UTF_8);
+            nicknameProbe = readRawScript(R.raw.nickname_probe, "nickname probe");
         }
         return nicknameProbe;
     }
 
+    // 远控网页用 Web Notifications API 发提醒，而 WebView 里没有这个 API（typeof Notification 是 "undefined"），
+    // 页面自己的守卫会把整条发送路径跳过；这里补一份最小实现，把通知交回原生（见 res/raw/notification_shim.js）。
+    private void injectNotifyShim(WebView view) {
+        if (notifyShim == null) {
+            notifyShim = readRawScript(R.raw.notification_shim, "notification shim");
+        }
+        if (notifyShim != null) {
+            view.evaluateJavascript(notifyShim, null);
+            // 排查通知问题时看这一行：没有它说明脚本没注入，有它而页面毫无反应则问题在网页侧。
+            Log.i(TAG, "notify shim injected");
+        }
+    }
+
+    private String readRawScript(int resId, String label) {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        try (InputStream in = getResources().openRawResource(resId)) {
+            byte[] chunk = new byte[4096];
+            int read;
+            while ((read = in.read(chunk)) > 0) {
+                buffer.write(chunk, 0, read);
+            }
+        } catch (IOException e) {
+            Log.w(TAG, label + " script unavailable", e);
+            return null;
+        }
+        return new String(buffer.toByteArray(), StandardCharsets.UTF_8);
+    }
+
     private class ShellWebViewClient extends WebViewClient {
+        // shim 要抢在页面脚本之前落地：加载开始时注入一次，加载完成后再补一次（注入可能早于新文档建立）。
+        @Override
+        public void onPageStarted(WebView view, String url, Bitmap favicon) {
+            super.onPageStarted(view, url, favicon);
+            injectNotifyShim(view);
+        }
+
         @Override
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
+            injectNotifyShim(view);
             captureNickname(view, view.getUrl());
         }
 
@@ -508,6 +655,8 @@ public abstract class WebActivity extends ThemedActivity {
             applySettings(popup);
             popup.setWebViewClient(new PopupWebViewClient());
             popup.setWebChromeClient(new PopupChromeClient());
+            // 弹窗里可能也会跑远控页，同样给它挂桥，通知才会走同一条路。
+            popup.addJavascriptInterface(notifyBridge, NOTIFY_BRIDGE_NAME);
             showPopup(popup);
             WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
             transport.setWebView(popup);
@@ -523,6 +672,18 @@ public abstract class WebActivity extends ThemedActivity {
     }
 
     private class PopupWebViewClient extends WebViewClient {
+        @Override
+        public void onPageStarted(WebView view, String url, Bitmap favicon) {
+            super.onPageStarted(view, url, favicon);
+            injectNotifyShim(view);
+        }
+
+        @Override
+        public void onPageFinished(WebView view, String url) {
+            super.onPageFinished(view, url);
+            injectNotifyShim(view);
+        }
+
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
             return handlePopupUri(request.getUrl());

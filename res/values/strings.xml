@@ -99,6 +99,11 @@
     <string name="web_more">更多</string>
     <string name="login_state_title_with_account">登录状态 · %1$s</string>
     <string name="render_gone">网页进程已崩溃，请重新进入设备</string>
+    <string name="notify_channel_sound">远控提醒</string>
+    <string name="notify_channel_sound_desc">回合完成、待回答或待审批时提醒，跟随网页的通知提示音设置</string>
+    <string name="notify_channel_silent">远控提醒（静音）</string>
+    <string name="notify_channel_silent_desc">网页关掉了通知提示音时使用，不出声、不亮屏提醒</string>
+    <string name="notify_masked_body">打开应用查看详情</string>
 
     <string name="settings_auto_update">自动检查更新</string>
     <string name="settings_auto_update_hint">只检查版本信息，不会自动下载</string>
