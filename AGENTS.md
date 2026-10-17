@@ -45,8 +45,6 @@ src/com/kimirc/shell/                      全部 Java 源码，包名 com.kimir
   WebBarStore.java                         远控页顶部标题栏显隐开关，跨进程用文件存
   WebCacheStore.java                       「清理缓存」请求标记，按槽位落文件，由账号进程自己执行
   SecureAlertDialog.java                   弹窗窗口补 FLAG_SECURE 的 Builder
-  NotificationBridge.java                   网页侧的 window.AndroidNotify：只暴露通知的显示/关闭与权限查询
-  NotifyCenter.java                         系统通知的渠道、权限、点击意图与文案清洗；通知权限「问过没」落文件
   ThemeStore.java / ThemedActivity.java    明暗模式覆盖，跨进程用文件存
   UpdateChecker.java                       读双源版本元数据、解析并规范化摘要、比对版本、两源交叉核对；维护请求白名单与手动跳转跟随
   UpdateStore.java                         自动检查开关、上次检查时间、被忽略版本（主进程 SharedPreferences）
@@ -54,7 +52,7 @@ src/com/kimirc/shell/                      全部 Java 源码，包名 com.kimir
   InstallResultReceiver.java               接收系统回投的安装结果广播（不导出）
   UpdatePrompt.java                        检查/提示/进度/安装前后的弹窗与流程编排
 res/                                       aapt2 直接编译整个目录，新增文件自动生效
-  layout/ values/ values-night/ values-v27/ drawable*/ mipmap-*/ raw/nickname_probe.js raw/notification_shim.js
+  layout/ values/ values-night/ values-v27/ drawable*/ mipmap-*/ raw/nickname_probe.js
   layout/dialog_update.xml / dialog_download.xml  更新提示与下载进度弹窗
 assets/logo.png                           图标与启动图源图
 docs/screenshots/                         README 截图（主页 / 远控页 / 设置页，已压到 600px 宽并清掉 EXIF）
@@ -83,7 +81,6 @@ libs/zxing-core-3.5.3.jar                 唯一依赖，SHA-256 在 build.sh �
 - `WebView.setDataDirectorySuffix()` 是**进程级、只能调用一次**（`WebActivity.applyDataDirectory` 会重复调用即抛异常）。槽位与进程一一对应，所以每加一个账号槽必须先加一个 `WebActivity<N>` 子类 + manifest 中带 `android:process=":acct<N>"` 的 `<activity>`，并同步改 `SLOT_COUNT`、`activityForSlot()`。上限 4 个。
 - 账号存储隔离依赖「独立进程 + 独立数据目录」，删除账号只释放槽位，槽位复用前靠 `wipe_slot_<N>` 标记文件触发清空。
 - 每个账号的 WebView profile（含网页缓存）只属于它自己的进程：主进程**不要**直接删这些目录下的文件，那会踩到可能正在运行的 WebView。需要清理时照 `wipe_slot_<N>` 的做法落标记，由账号进程执行——「清理缓存」就是这么做的：主进程写 `clear_cache_slot_<N>`（`WebCacheStore`），账号进程在 `onCreate` / `onResume` 里 `WebActivity.applyPendingCacheClear` 清掉，只清缓存、不动 cookie 与站点存储。
-- 通知权限「问过没」（`NotifyCenter` 的 `notify_permission_asked` 标记文件）也跨进程：每个账号进程都可能问一次，靠文件保证整个安装只问一次。它只记「问过」这一位，重复写是幂等的；用户拒绝后由 `NotifyCenter` 的进程内标记让网页停止请求，用户日后在系统设置里授权则立即恢复（`permissionState()` 每次都先看系统当下状态）。
 
 ## 安全红线
 
@@ -94,7 +91,6 @@ libs/zxing-core-3.5.3.jar                 唯一依赖，SHA-256 在 build.sh �
 - Cookie 只在用户主动打开「登录状态」面板时读取用于显示，默认掩码、不落盘、不进日志/Intent/Bundle；面板必须运行在账号自己的进程里。
 - 截屏保护：`ThemedActivity.onCreate` 按 `PrivacyStore` 决定是否加 `FLAG_SECURE`（默认加，用户可在「设置」页关掉）。**不要在子类里自己加 `FLAG_SECURE`**——加在了本地，用户关掉开关也清不掉。弹窗是独立窗口、Activity 的标志带不过去，所以设置类弹窗统一用 `SecureAlertDialog.Builder`（在 `create()` 里补标志）。`LoginStateViewer` 显示凭证，无论开关如何都强制加。`allowBackup="false"`（防书签被系统备份上云）不得改动。
 - 应用锁是「手机丢失 → 设备被接管」的核心防线，切换账号需二次验证。改动 `MainActivity` 的解锁状态机（`unlocked` / `onUserLeaveHint` / `internalNavigation`）时格外小心。
-- 系统通知：远控网页的「回合完成 / 待回答 / 待审批」提醒靠 `res/raw/notification_shim.js` 补出网页缺失的 `window.Notification`，再经 `NotificationBridge` 交给 `NotifyCenter` 发系统通知。`addJavascriptInterface` 暴露的 `AndroidNotify` 是**页面可调用的原生面**：只允许保留「显示/关闭一条通知」与查询、请求通知权限这几个方法，不得在其中接受链接、路径或任何能驱动原生的参数；标题与正文一律按不可信输入处理（限长、抹平控制字符）。正文含会话标题与提问内容，**截屏保护开启时（默认）只发状态文案**，不把远控内容送上锁屏；日志里只记 tag 与 silent 这类结构信息，不记标题正文。通知点击只把 tag 回灌给页面（`__kimircNotifyClick`），Intent 里只带进入该远控页原本就需要的参数，不得改成由网页指定跳转目标。
 - 更新校验：签名证书是信任锚，SHA-256 只负责传输完整性。更新源的域名白名单不得放宽，只允许这些主机**及其子域**：`cnb.cool`、`api.github.com`、`github.com`、`release-assets.githubusercontent.com`、`objects.githubusercontent.com`（`UpdateChecker.isAllowedHost` 对每个白名单条目都放行 `host.equals(条目)` 与 `host.endsWith("." + 条目)`，没有精确匹配例外）；跳转每一跳都要重新校验，不得覆盖任何 TLS 校验。SHA-256 或签名校验失败一律不安装，不得增加「跳过校验」开关；`CNB_TOKEN` 只给 CI，不得进客户端；不得为更新流程引入任何依赖，只用 `android.jar` 里的 `HttpURLConnection` + `org.json` + `MessageDigest`。
 - 密码学材料不入库：`release.keystore`、`release-secrets.txt`、`release-keystore.b64` 已在 `.gitignore`，不要提交、不要打印其内容；日常与 CI 构建用固定路径的 `~/.android/debug.keystore`。
 
@@ -127,14 +123,10 @@ Release 发布后进入 CNB 同步：`.github/workflows/sync-cnb.yml` 由 `push`
 位图全部由 `assets/logo.png` 派生，换图后重新生成（需 Pillow）：
 
 ```bash
-python tools/make-icons.py     # 输出 res/mipmap-*/ic_launcher_foreground.png、res/drawable-*/logo.png、res/drawable-*/ic_stat_notify.png 与 res/drawable-*/ic_notify_large.png
+python tools/make-icons.py     # 输出 res/mipmap-*/ic_launcher_foreground.png 与 res/drawable-*/logo.png
 ```
 
 不要手工编辑这些 PNG；背景层 `res/drawable/ic_launcher_background.xml` 是纯白。
-
-`ic_stat_notify.png` 是通知状态栏用的小图标：Android 只取它的 alpha 当遮罩再统一染色，所以脚本从 logo 里抽出「有颜色或足够暗」的墨迹当形状、把白色（画布与角色的眼睛）挖成透明，得到单色剪影；换图后不需要额外处理，重跑脚本即可。状态栏图标尺寸是 24dp 画布、21dp 内容，在 `NotifyCenter` 里以 `R.drawable.ic_stat_notify` 引用。
-
-`ic_notify_large.png` 是通知展开后的大图标：系统原样绘制、不遮罩也不染色，所以保留彩色 logo，尺寸 64dp 画布、58dp 内容（留出系统容器的圆角）。它以 `R.drawable.ic_notify_large` 解码成 Bitmap 交给 `setLargeIcon`，解不出来就退回只有小图标，不影响通知发出。
 
 ## 第三方
 
