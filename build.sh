@@ -3,8 +3,8 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 APP_NAME="KimiRC"
-VERSION_NAME="0.1.10"
-VERSION_CODE=9
+VERSION_NAME="0.1.11"
+VERSION_CODE=10
 MIN_SDK=28
 TARGET_SDK=34
 
