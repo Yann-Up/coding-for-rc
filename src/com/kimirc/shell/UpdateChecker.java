@@ -190,6 +190,15 @@ final class UpdateChecker {
         return "KimiRC-" + versionName + ".apk";
     }
 
+    // 某个版本的发布页。和下载地址一样用本类常量拼，不采信远端给的页面地址——
+    // 那个值会被「打开发布页面」按钮打开，远端可以把它填成白名单内的任意地址。
+    static String releasePage(String versionName) {
+        if (versionName == null || versionName.isEmpty()) {
+            return CNB_RELEASES_PAGE;
+        }
+        return CNB_RELEASES_PAGE + "/tag/v" + versionName;
+    }
+
     private static String cnbApkUrl(String versionName) {
         if (versionName.isEmpty()) {
             return "";
@@ -314,9 +323,9 @@ final class UpdateChecker {
         info.versionName = text(root, "version");
         info.versionCode = root.optInt("versionCode", 0);
         info.notes = notesText(text(root, "notes"));
-        // 发布页只有固定两个，用本类常量拼，不采信清单里的页面地址：
-        // 那个值会被「打开发布页面」按钮使用，若被篡改可以指向白名单内的钓鱼地址。
-        info.pageUrl = CNB_RELEASES_PAGE;
+        // 发布页用本类常量按版本号拼（与 GitHub 那条路径一样，指向该版本自己的页面），
+        // 不采信清单里的页面地址。
+        info.pageUrl = releasePage(info.versionName);
         JSONObject android = root.optJSONObject("android");
         if (android != null) {
             info.apkUrl = text(android, "url");

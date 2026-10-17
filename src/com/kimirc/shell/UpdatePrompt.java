@@ -279,13 +279,14 @@ final class UpdatePrompt {
                 UpdateChecker.CNB_RELEASES_PAGE);
     }
 
-    private void showInstallFailure(int code) {
+    private void showInstallFailure(UpdateChecker.Info info, int code) {
         if (code == UpdateInstaller.ERR_PERMISSION) {
             showPermission();
             return;
         }
-        showMessage(R.string.update_dialog_title, activity.getString(installErrorText(code)),
-                UpdateChecker.CNB_RELEASES_PAGE);
+        // 标题与「检查更新」区分开：这里是安装环节出的问题，不是版本检查。
+        showMessage(R.string.update_install_title, activity.getString(installErrorText(code)),
+                UpdateChecker.releasePage(info.versionName));
     }
 
     private void showMessage(int titleRes, CharSequence message, final String pageUrl) {
@@ -410,7 +411,7 @@ final class UpdatePrompt {
                             public void run() {
                                 verified = true;
                                 dismissProgress();
-                                showInstallFailure(code);
+                                showInstallFailure(info, code);
                             }
                         });
                     }
