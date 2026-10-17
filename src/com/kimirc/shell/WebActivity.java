@@ -305,6 +305,7 @@ public abstract class WebActivity extends ThemedActivity {
         notifyPermissionInFlight = false;
         boolean granted = grantResults != null && grantResults.length > 0
                 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+        Log.i(TAG, granted ? "notify permission granted" : "notify permission denied");
         if (!granted) {
             NotifyCenter.rememberDenied();
         }
@@ -365,6 +366,7 @@ public abstract class WebActivity extends ThemedActivity {
             return;
         }
         notifyPermissionInFlight = true;
+        Log.i(TAG, "page requested notify permission");
         requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},
                 REQ_NOTIFY_PERMISSION);
     }
@@ -551,6 +553,8 @@ public abstract class WebActivity extends ThemedActivity {
         }
         if (notifyShim != null) {
             view.evaluateJavascript(notifyShim, null);
+            // 排查通知问题时看这一行：没有它说明脚本没注入，有它而页面毫无反应则问题在网页侧。
+            Log.i(TAG, "notify shim injected");
         }
     }
 
