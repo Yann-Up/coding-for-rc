@@ -6,6 +6,7 @@
     android:orientation="vertical">
 
     <FrameLayout
+        android:id="@+id/web_bar"
         android:layout_width="match_parent"
         android:layout_height="56dp"
         android:background="@drawable/bg_web_bar">

@@ -10,6 +10,9 @@ import android.view.View;
 import android.widget.CompoundButton;
 import android.widget.Switch;
 import android.widget.TextView;
+import android.widget.Toast;
+
+import java.util.List;
 
 public class SettingsActivity extends ThemedActivity {
 
@@ -73,6 +76,15 @@ public class SettingsActivity extends ThemedActivity {
             }
         });
 
+        Switch webBarSwitch = findViewById(R.id.web_bar_switch);
+        webBarSwitch.setChecked(WebBarStore.hidden(this));
+        webBarSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                WebBarStore.setHidden(SettingsActivity.this, isChecked);
+            }
+        });
+
         findViewById(R.id.theme_row).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -84,6 +96,13 @@ public class SettingsActivity extends ThemedActivity {
             @Override
             public void onClick(View v) {
                 showAboutDialog();
+            }
+        });
+
+        findViewById(R.id.cache_row).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                confirmClearCache();
             }
         });
     }
@@ -184,6 +203,28 @@ public class SettingsActivity extends ThemedActivity {
                 .setTitle(R.string.settings_about)
                 .setView(content)
                 .setPositiveButton(R.string.about_close, null)
+                .show();
+    }
+
+    // 网页缓存属于各账号进程自己的 WebView profile，主进程删文件会踩到正在运行的 WebView，
+    // 所以这里只落标记，由对应账号进程在进入/回到远控页时清理（见 WebCacheStore）。
+    private void confirmClearCache() {
+        final List<AccountStore.Account> accounts = AccountStore.load(this);
+        new SecureAlertDialog.Builder(this, R.style.Theme_KimiRC_Dialog_Alert)
+                .setTitle(R.string.cache_clear_confirm_title)
+                .setMessage(R.string.cache_clear_confirm_message)
+                .setPositiveButton(R.string.cache_clear_confirm,
+                        new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                for (AccountStore.Account account : accounts) {
+                                    WebCacheStore.requestClear(SettingsActivity.this, account.slot);
+                                }
+                                Toast.makeText(SettingsActivity.this, R.string.cache_clear_toast,
+                                        Toast.LENGTH_SHORT).show();
+                            }
+                        })
+                .setNegativeButton(R.string.cancel, null)
                 .show();
     }
 }

@@ -86,6 +86,14 @@
     <string name="theme_dark">月之暗面</string>
     <string name="screenshot_guard">截屏保护</string>
     <string name="screenshot_guard_hint">禁止截屏与最近任务预览</string>
+    <string name="hide_web_bar">隐藏远控页标题栏</string>
+    <string name="hide_web_bar_hint">只作用于远控页，主页与设置页不受影响；隐藏后返回手势仍可用，「刷新」与「登录状态」入口一并收起</string>
+    <string name="cache_clear">清理缓存</string>
+    <string name="cache_clear_hint">清除各账号远控页的网页缓存，不影响登录状态与设备列表</string>
+    <string name="cache_clear_confirm_title">清理缓存</string>
+    <string name="cache_clear_confirm_message">将清除所有账号远控页的网页缓存。登录状态、站点数据与设备列表都不受影响；缓存会在对应账号下次打开远控页时清理完成。</string>
+    <string name="cache_clear_confirm">清理</string>
+    <string name="cache_clear_toast">已清除网页缓存，下次打开远控页时生效</string>
     <string name="web_back">返回</string>
     <string name="web_reload">刷新</string>
     <string name="web_more">更多</string>

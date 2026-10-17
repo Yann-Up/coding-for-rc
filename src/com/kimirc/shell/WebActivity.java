@@ -59,6 +59,7 @@ public abstract class WebActivity extends ThemedActivity {
     private static final int MENU_LOGIN_STATE = 2;
 
     private FrameLayout container;
+    private View webBar;
     private WebView webView;
     private WebView popupView;
     private LoginStateViewer loginStateViewer;
@@ -125,6 +126,8 @@ public abstract class WebActivity extends ThemedActivity {
 
         setContentView(R.layout.activity_web);
         container = findViewById(R.id.web_container);
+        webBar = findViewById(R.id.web_bar);
+        applyWebBarPolicy();
         TextView title = findViewById(R.id.web_title);
         title.setText(accountName);
         TextView subtitle = findViewById(R.id.web_subtitle);
@@ -165,6 +168,7 @@ public abstract class WebActivity extends ThemedActivity {
         if (AccountStore.hasWipePending(this, slot)) {
             wipeSlotStorage(slot);
         }
+        applyPendingCacheClear(slot);
         webView.loadUrl(url);
     }
 
@@ -194,6 +198,11 @@ public abstract class WebActivity extends ThemedActivity {
         menu.show();
     }
 
+    // 标题栏的显隐由设置页决定，跨进程读文件；隐藏后网页占满整屏，返回手势仍可退出。
+    private void applyWebBarPolicy() {
+        webBar.setVisibility(WebBarStore.hidden(this) ? View.GONE : View.VISIBLE);
+    }
+
     private static synchronized void applyDataDirectory(int slot) {
         if (appliedSlot == slot) {
             return;
@@ -204,6 +213,17 @@ public abstract class WebActivity extends ThemedActivity {
         }
         WebView.setDataDirectorySuffix(DATA_DIRECTORY_PREFIX + slot);
         appliedSlot = slot;
+    }
+
+    // 设置页只能落标记，真正清缓存得由持有这个 profile 的进程来做（见 WebCacheStore）。
+    private void applyPendingCacheClear(int slot) {
+        if (webView == null || !WebCacheStore.hasClearPending(this, slot)) {
+            return;
+        }
+        // 只清网页缓存，不动 cookie 与站点存储，登录状态因此不受影响。
+        webView.clearCache(true);
+        WebCacheStore.clearPending(this, slot);
+        Log.i(TAG, "slot " + slot + " web cache cleared");
     }
 
     private void wipeSlotStorage(int slot) {
@@ -228,6 +248,17 @@ public abstract class WebActivity extends ThemedActivity {
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setSupportMultipleWindows(true);
+    }
+
+    // 用户在设置页改过开关或点过「清理缓存」后，回到远控页要跟着变；账号进程也顺带读到主进程刚写下的新值。
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // onCreate 里参数不合法会直接 finish，那种情况下没有标题栏和 WebView 可改。
+        if (webBar != null) {
+            applyWebBarPolicy();
+            applyPendingCacheClear(slotIndex());
+        }
     }
 
     @Override

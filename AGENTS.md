@@ -42,6 +42,8 @@ src/com/kimirc/shell/                      全部 Java 源码，包名 com.kimir
   ViewfinderView.java                      扫码取景框自绘
   AccountStore.java / DeviceStore.java     本地存储（账号、设备）
   PrivacyStore.java                        截屏保护开关，跨进程用文件存
+  WebBarStore.java                         远控页顶部标题栏显隐开关，跨进程用文件存
+  WebCacheStore.java                       「清理缓存」请求标记，按槽位落文件，由账号进程自己执行
   SecureAlertDialog.java                   弹窗窗口补 FLAG_SECURE 的 Builder
   ThemeStore.java / ThemedActivity.java    明暗模式覆盖，跨进程用文件存
   UpdateChecker.java                       读双源版本元数据、解析并规范化摘要、比对版本、两源交叉核对；维护请求白名单与手动跳转跟随
@@ -74,9 +76,10 @@ libs/zxing-core-3.5.3.jar                 唯一依赖，SHA-256 在 build.sh �
 
 `WebActivity0..3` 各跑在 `:acct0..:acct3` 独立进程，主进程与账号进程之间**不共享内存**，因此：
 
-- **跨进程状态一律用文件，不要用 SharedPreferences**：后者按进程缓存，另一方读不到刚写的值。参见 `AccountStore.nickname()`、`AccountStore.wipeFile()`、`PrivacyStore.allowScreenshots()`、`ThemeStore.mode()`，注释里已写明原因。`SharedPreferences` 只用于主进程自己读写的账号/设备列表与 `UpdateStore`。`UpdateStore` 记录自动检查开关、上次检查时间、被忽略的版本号；它使用 SharedPreferences 是**有意的**——更新检查只发生在主进程（主页与设置页都在主进程），没有账号进程会读它，所以不需要像 `PrivacyStore` / `ThemeStore` 那样落文件。
+- **跨进程状态一律用文件，不要用 SharedPreferences**：后者按进程缓存，另一方读不到刚写的值。参见 `AccountStore.nickname()`、`AccountStore.wipeFile()`、`PrivacyStore.allowScreenshots()`、`ThemeStore.mode()`、`WebBarStore.hidden()`，注释里已写明原因。`SharedPreferences` 只用于主进程自己读写的账号/设备列表与 `UpdateStore`。`UpdateStore` 记录自动检查开关、上次检查时间、被忽略的版本号；它使用 SharedPreferences 是**有意的**——更新检查只发生在主进程（主页与设置页都在主进程），没有账号进程会读它，所以不需要像 `PrivacyStore` / `ThemeStore` 那样落文件。
 - `WebView.setDataDirectorySuffix()` 是**进程级、只能调用一次**（`WebActivity.applyDataDirectory` 会重复调用即抛异常）。槽位与进程一一对应，所以每加一个账号槽必须先加一个 `WebActivity<N>` 子类 + manifest 中带 `android:process=":acct<N>"` 的 `<activity>`，并同步改 `SLOT_COUNT`、`activityForSlot()`。上限 4 个。
 - 账号存储隔离依赖「独立进程 + 独立数据目录」，删除账号只释放槽位，槽位复用前靠 `wipe_slot_<N>` 标记文件触发清空。
+- 每个账号的 WebView profile（含网页缓存）只属于它自己的进程：主进程**不要**直接删这些目录下的文件，那会踩到可能正在运行的 WebView。需要清理时照 `wipe_slot_<N>` 的做法落标记，由账号进程执行——「清理缓存」就是这么做的：主进程写 `clear_cache_slot_<N>`（`WebCacheStore`），账号进程在 `onCreate` / `onResume` 里 `WebActivity.applyPendingCacheClear` 清掉，只清缓存、不动 cookie 与站点存储。
 
 ## 安全红线
 
