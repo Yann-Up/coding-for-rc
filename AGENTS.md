@@ -55,6 +55,7 @@ res/                                       aapt2 直接编译整个目录，新�
   layout/ values/ values-night/ values-v27/ drawable*/ mipmap-*/ raw/nickname_probe.js
   layout/dialog_update.xml / dialog_download.xml  更新提示与下载进度弹窗
 assets/logo.png                           图标与启动图源图
+docs/screenshots/                         README 截图（主页 / 远控页 / 设置页，已压到 600px 宽并清掉 EXIF）
 tools/make-icons.py                       由 assets/logo.png 派生各密度位图
 tools/release-notes.sh                    取 README 更新记录里某个 tag 的摘要（release 工作流用）
 libs/zxing-core-3.5.3.jar                 唯一依赖，SHA-256 在 build.sh 中固定校验
